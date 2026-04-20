@@ -1,0 +1,23 @@
+<div class="panel">
+  <h2>Live Train Positions</h2>
+  <div class="controls">
+    <label>Filter by Line:</label>
+    <select [(ngModel)]="selectedLine" (ngModelChange)="onLineChange()">
+      <option value="">All Lines</option>
+      <option *ngFor="let l of lines.slice(1)" [value]="l">{{ l }}</option>
+    </select>
+    <span class="count">{{ filtered.length }} trains</span>
+  </div>
+  <div *ngIf="loading" class="loading">Loading...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+  <div class="train-grid">
+    <div *ngFor="let train of filtered" class="train-card" [style.border-color]="colorFor(train.LineCode)">
+      <div class="train-id">Train {{ train.TrainNumber || train.TrainId }}</div>
+      <div class="train-line" [style.background]="colorFor(train.LineCode)">{{ train.LineCode }}</div>
+      <div class="train-detail">Cars: {{ train.CarCount }}</div>
+      <div class="train-detail">Dir: {{ train.DirectionNum }}</div>
+      <div class="train-detail">→ {{ train.DestinationStationCode || '—' }}</div>
+      <div class="train-detail service">{{ train.ServiceType }}</div>
+    </div>
+  </div>
+</div>

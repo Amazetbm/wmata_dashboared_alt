@@ -1,0 +1,15 @@
+<div class="panel">
+  <h2>Rail Incidents</h2>
+  <div *ngIf="loading" class="loading">Loading...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+  <div *ngIf="!loading && incidents.length === 0" class="empty">No current incidents.</div>
+  <div *ngFor="let inc of incidents" class="incident-card">
+    <div class="incident-type badge">{{ inc.IncidentType }}</div>
+    <div class="incident-desc">{{ inc.Description }}</div>
+    <div class="incident-meta">
+      <span class="lines">Lines: {{ inc.LinesAffected }}</span>
+      <span class="delay" *ngIf="inc.PassengerDelay > 0">Delay: {{ inc.PassengerDelay }} min</span>
+    </div>
+    <div class="incident-updated">Updated: {{ inc.DateUpdated }}</div>
+  </div>
+</div>

@@ -1,0 +1,29 @@
+<div class="panel">
+  <h2>Station Monitor</h2>
+  <div class="controls">
+    <select [(ngModel)]="selectedCode" (ngModelChange)="onStationChange()">
+      <option *ngFor="let s of stations" [value]="s.code">{{ s.name }}</option>
+    </select>
+  </div>
+  <div *ngIf="loading" class="loading">Loading...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+  <table *ngIf="!loading && predictions.length > 0" class="predictions-table">
+    <thead>
+      <tr>
+        <th>Line</th>
+        <th>Destination</th>
+        <th>Cars</th>
+        <th>Min</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let p of predictions">
+        <td><span class="line-badge" [attr.data-line]="p.Line">{{ p.Line }}</span></td>
+        <td>{{ p.DestinationName }}</td>
+        <td>{{ p.Car || '—' }}</td>
+        <td><span [class]="'min ' + minuteClass(p.Min)">{{ p.Min }}</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <div *ngIf="!loading && predictions.length === 0 && !error" class="empty">No predictions available.</div>
+</div>

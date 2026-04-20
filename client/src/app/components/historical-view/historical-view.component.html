@@ -1,0 +1,58 @@
+<div class="panel historical">
+  <h2>Historical View</h2>
+
+  <div class="controls">
+    <label>Type:
+      <select [(ngModel)]="dataType">
+        <option value="incidents">Rail Incidents</option>
+        <option value="elevators">Elevator/Escalator Outages</option>
+      </select>
+    </label>
+    <label>From: <input type="datetime-local" [(ngModel)]="from" /></label>
+    <label>To: <input type="datetime-local" [(ngModel)]="to" /></label>
+    <button (click)="fetch()" [disabled]="loading">{{ loading ? 'Loading…' : 'Fetch' }}</button>
+  </div>
+
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <!-- Bar chart -->
+  <div *ngIf="chartData.length > 0" class="chart">
+    <h3>Records per snapshot</h3>
+    <div class="bars">
+      <div *ngFor="let d of chartData" class="bar-wrap" [title]="d.label + ': ' + d.count">
+        <div class="bar" [style.height.%]="(d.count / maxCount) * 100"></div>
+        <div class="bar-label">{{ d.label }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Replay controls -->
+  <div *ngIf="snapshots.length > 0" class="replay-controls">
+    <button (click)="startReplay()" [disabled]="isReplaying">&#9654; Replay</button>
+    <button (click)="stopReplay()" [disabled]="!isReplaying">&#9646;&#9646; Stop</button>
+    <span class="snap-info" *ngIf="replayIndex >= 0">
+      Snapshot {{ replayIndex + 1 }} / {{ snapshots.length }}: {{ snapshots[replayIndex] | date:'medium' }}
+    </span>
+  </div>
+
+  <!-- Replay records -->
+  <div *ngIf="replayIndex >= 0" class="replay-records">
+    <div *ngIf="replayRecords.length === 0" class="empty">No records in this snapshot.</div>
+    <div *ngFor="let r of replayRecords" class="record-card">
+      <div class="record-time">{{ r.snapshotAt | date:'HH:mm:ss' }}</div>
+      <ng-container *ngIf="dataType === 'incidents'">
+        <div class="record-title">{{ r.IncidentType }}: {{ r.Description }}</div>
+        <div class="record-meta">Lines: {{ r.LinesAffected }}</div>
+      </ng-container>
+      <ng-container *ngIf="dataType === 'elevators'">
+        <div class="record-title">{{ r.UnitType }} — {{ r.StationName }}</div>
+        <div class="record-meta">{{ r.SymptomDescription }}</div>
+      </ng-container>
+    </div>
+  </div>
+
+  <!-- Full table -->
+  <div *ngIf="!isReplaying && records.length > 0" class="record-count">
+    {{ records.length }} total records in range
+  </div>
+</div>

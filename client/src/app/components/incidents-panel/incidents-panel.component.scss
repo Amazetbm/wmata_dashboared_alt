@@ -1,0 +1,21 @@
+.incident-card {
+  background: #1e1e2e;
+  border-left: 4px solid #f38ba8;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+.incident-type.badge {
+  display: inline-block;
+  font-size: 11px;
+  background: #f38ba8;
+  color: #000;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.incident-desc { font-size: 14px; margin-bottom: 6px; }
+.incident-meta { font-size: 12px; color: #cba6f7; display: flex; gap: 16px; }
+.incident-updated { font-size: 11px; color: #6c7086; margin-top: 4px; }

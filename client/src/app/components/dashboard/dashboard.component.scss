@@ -1,0 +1,17 @@
+.top-bar {
+  background: #1e1e2e;
+  border-bottom: 2px solid #313244;
+  padding: 16px 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+.logo { font-size: 20px; font-weight: 700; color: #cba6f7; letter-spacing: 1px; }
+.subtitle { font-size: 12px; color: #6c7086; }
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}

@@ -1,0 +1,47 @@
+.historical { grid-column: 1 / -1; }
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px;
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #a6adc8; }
+  select, input {
+    background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+    padding: 4px 8px; border-radius: 4px;
+  }
+  button {
+    background: #cba6f7; color: #000; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-weight: 700; align-self: flex-end;
+    &:disabled { opacity: 0.5; cursor: default; }
+  }
+}
+
+.chart {
+  margin-bottom: 16px;
+  h3 { font-size: 13px; color: #a6adc8; margin-bottom: 8px; }
+}
+.bars {
+  display: flex; align-items: flex-end; gap: 4px; height: 80px;
+  overflow-x: auto;
+}
+.bar-wrap { display: flex; flex-direction: column; align-items: center; min-width: 28px; }
+.bar { width: 20px; background: #89b4fa; border-radius: 2px 2px 0 0; min-height: 2px; }
+.bar-label { font-size: 9px; color: #6c7086; margin-top: 2px; writing-mode: vertical-rl; }
+
+.replay-controls {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  button {
+    background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+    padding: 6px 12px; border-radius: 4px; cursor: pointer;
+    &:disabled { opacity: 0.4; cursor: default; }
+  }
+  .snap-info { font-size: 12px; color: #89b4fa; }
+}
+
+.replay-records { display: flex; flex-direction: column; gap: 8px; }
+.record-card {
+  background: #1e1e2e; border-left: 3px solid #89b4fa;
+  padding: 8px 12px; border-radius: 4px;
+}
+.record-time { font-size: 11px; color: #6c7086; }
+.record-title { font-size: 13px; margin: 4px 0; }
+.record-meta { font-size: 12px; color: #a6adc8; }
+.record-count { font-size: 12px; color: #6c7086; margin-top: 8px; }

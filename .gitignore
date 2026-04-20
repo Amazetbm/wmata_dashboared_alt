@@ -1,0 +1,11 @@
+node_modules/
+server/node_modules/
+client/node_modules/
+.env
+server/.env
+client/dist/
+*.log
+.idea/
+.claude/
+.claude/settings.local.json
+CLAUDE.md

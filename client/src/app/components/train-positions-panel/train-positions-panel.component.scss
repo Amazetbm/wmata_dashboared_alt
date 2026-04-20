@@ -1,0 +1,32 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  select { background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 4px 8px; border-radius: 4px; }
+}
+.count { font-size: 12px; color: #6c7086; }
+.train-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.train-card {
+  background: #1e1e2e;
+  border: 2px solid #45475a;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+.train-id { font-weight: 700; margin-bottom: 4px; }
+.train-line {
+  display: inline-block;
+  color: #000;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.train-detail { color: #a6adc8; font-size: 11px; }
+.service { color: #89dceb; text-transform: uppercase; }

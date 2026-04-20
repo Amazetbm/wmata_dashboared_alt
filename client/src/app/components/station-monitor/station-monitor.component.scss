@@ -1,0 +1,24 @@
+.controls select {
+  background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+  padding: 4px 8px; border-radius: 4px; margin-bottom: 12px;
+}
+.predictions-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+  th { background: #313244; padding: 8px; text-align: left; color: #cba6f7; }
+  td { padding: 8px; border-bottom: 1px solid #313244; }
+}
+.line-badge {
+  display: inline-block; width: 28px; height: 28px; border-radius: 50%;
+  text-align: center; line-height: 28px; font-weight: 700; font-size: 11px; color: #000;
+  &[data-line="RD"] { background: #BF0000; color: #fff; }
+  &[data-line="BL"] { background: #009CDE; }
+  &[data-line="YL"] { background: #FFD700; }
+  &[data-line="OR"] { background: #ED8B00; }
+  &[data-line="GR"] { background: #00B140; }
+  &[data-line="SV"] { background: #919D9D; }
+}
+.min {
+  font-weight: 700;
+  &.arr, &.brd { color: #a6e3a1; }
+  &.soon { color: #fab387; }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "wmata-dashboard",
+  "version": "1.0.0",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && node node_modules/@angular/cli/bin/ng.js serve",
+    "build:client": "cd client && node node_modules/@angular/cli/bin/ng.js build"
+  }
+}
