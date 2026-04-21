@@ -1,0 +1,74 @@
+<div class="panel adherence">
+  <div class="panel-header">
+    <h2>Schedule Adherence</h2>
+    <span class="snap-time" *ngIf="snapshotAt">as of {{ snapshotAt | date:'HH:mm:ss' }}</span>
+  </div>
+
+  <div *ngIf="loading" class="loading">Loading...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <!-- Summary bar -->
+  <div *ngIf="!loading && summary.total > 0" class="summary-section">
+    <div class="summary-bar">
+      <div class="seg on-time"  [style.flex]="summary.onTime"      [title]="'On-time: ' + pct(summary.onTime) + '%'"></div>
+      <div class="seg minor"    [style.flex]="summary.minor"       [title]="'Minor: ' + pct(summary.minor) + '%'"></div>
+      <div class="seg significant" [style.flex]="summary.significant" [title]="'Significant: ' + pct(summary.significant) + '%'"></div>
+    </div>
+    <div class="summary-labels">
+      <span class="label on-time">On-time {{ pct(summary.onTime) }}%</span>
+      <span class="label minor">Minor {{ pct(summary.minor) }}%</span>
+      <span class="label significant">Significant {{ pct(summary.significant) }}%</span>
+      <span class="label total">{{ summary.total }} trains</span>
+    </div>
+  </div>
+
+  <!-- Line filter -->
+  <div class="controls" *ngIf="!loading">
+    <label>Line:</label>
+    <select [(ngModel)]="selectedLine" (ngModelChange)="onLineChange()">
+      <option value="">All Lines</option>
+      <option *ngFor="let l of lines.slice(1)" [value]="l">{{ l }}</option>
+    </select>
+    <span class="count">{{ filtered.length }} trains</span>
+  </div>
+
+  <!-- Train table -->
+  <div class="table-wrap" *ngIf="!loading && filtered.length > 0">
+    <table class="adherence-table">
+      <thead>
+        <tr>
+          <th>Train</th>
+          <th>Line</th>
+          <th>Dir</th>
+          <th>Current</th>
+          <th>Expected</th>
+          <th>Deviation</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let t of sortedFiltered()">
+          <td class="train-num">{{ t.trainNumber || t.trainId }}</td>
+          <td>
+            <span class="line-dot" [style.background]="colorFor(t.lineCode)">{{ t.lineCode }}</span>
+          </td>
+          <td class="dir">{{ t.directionNum === 1 ? '→' : '←' }}</td>
+          <td class="mono">{{ t.currentSeq }}</td>
+          <td class="mono">{{ t.expectedSeq }}</td>
+          <td class="mono dev" [class.pos]="t.deviation > 0" [class.neg]="t.deviation < 0">
+            {{ deviationLabel(t.deviation) }}
+          </td>
+          <td>
+            <span class="badge" [class]="t.status">
+              {{ t.status === 'on-time' ? 'On-time' : t.status === 'minor' ? 'Minor' : 'Significant' }}
+            </span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div *ngIf="!loading && filtered.length === 0 && !error" class="empty">
+    No active trains{{ selectedLine ? ' on ' + selectedLine : '' }}.
+  </div>
+</div>

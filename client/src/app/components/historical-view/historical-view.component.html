@@ -6,6 +6,13 @@
       <select [(ngModel)]="dataType">
         <option value="incidents">Rail Incidents</option>
         <option value="elevators">Elevator/Escalator Outages</option>
+        <option value="adherence">Schedule Adherence</option>
+      </select>
+    </label>
+    <label *ngIf="dataType === 'adherence'">Line:
+      <select [(ngModel)]="adherenceLine">
+        <option value="">All Lines</option>
+        <option *ngFor="let l of lines.slice(1)" [value]="l">{{ l }}</option>
       </select>
     </label>
     <label>From: <input type="datetime-local" [(ngModel)]="from" /></label>
@@ -15,7 +22,7 @@
 
   <div *ngIf="error" class="error">{{ error }}</div>
 
-  <!-- Bar chart -->
+  <!-- Incident / elevator bar chart -->
   <div *ngIf="chartData.length > 0" class="chart">
     <h3>Records per snapshot</h3>
     <div class="bars">
@@ -26,33 +33,60 @@
     </div>
   </div>
 
-  <!-- Replay controls -->
-  <div *ngIf="snapshots.length > 0" class="replay-controls">
-    <button (click)="startReplay()" [disabled]="isReplaying">&#9654; Replay</button>
-    <button (click)="stopReplay()" [disabled]="!isReplaying">&#9646;&#9646; Stop</button>
-    <span class="snap-info" *ngIf="replayIndex >= 0">
-      Snapshot {{ replayIndex + 1 }} / {{ snapshots.length }}: {{ snapshots[replayIndex] | date:'medium' }}
-    </span>
-  </div>
-
-  <!-- Replay records -->
-  <div *ngIf="replayIndex >= 0" class="replay-records">
-    <div *ngIf="replayRecords.length === 0" class="empty">No records in this snapshot.</div>
-    <div *ngFor="let r of replayRecords" class="record-card">
-      <div class="record-time">{{ r.snapshotAt | date:'HH:mm:ss' }}</div>
-      <ng-container *ngIf="dataType === 'incidents'">
-        <div class="record-title">{{ r.IncidentType }}: {{ r.Description }}</div>
-        <div class="record-meta">Lines: {{ r.LinesAffected }}</div>
-      </ng-container>
-      <ng-container *ngIf="dataType === 'elevators'">
-        <div class="record-title">{{ r.UnitType }} — {{ r.StationName }}</div>
-        <div class="record-meta">{{ r.SymptomDescription }}</div>
-      </ng-container>
+  <!-- Adherence stacked bar chart -->
+  <div *ngIf="adherenceChartData.length > 0" class="chart">
+    <h3>Adherence trend{{ adherenceLine ? ' — ' + adherenceLine : ' — Network-wide' }}</h3>
+    <div class="bars adherence-bars">
+      <div *ngFor="let d of adherenceChartData" class="bar-wrap"
+           [title]="d.label + ' — On-time: ' + d.onTimePct + '% Minor: ' + d.minorPct + '% Sig: ' + d.significantPct + '%'">
+        <div class="stacked-bar">
+          <div class="seg significant" [style.flex]="d.significantPct"></div>
+          <div class="seg minor"       [style.flex]="d.minorPct"></div>
+          <div class="seg on-time"     [style.flex]="d.onTimePct"></div>
+        </div>
+        <div class="bar-label">{{ d.label }}</div>
+      </div>
+    </div>
+    <div class="adh-legend">
+      <span class="on-time">On-time</span>
+      <span class="minor">Minor</span>
+      <span class="significant">Significant</span>
     </div>
   </div>
 
-  <!-- Full table -->
-  <div *ngIf="!isReplaying && records.length > 0" class="record-count">
+  <!-- Replay controls (incidents / elevators only) -->
+  <ng-container *ngIf="dataType !== 'adherence'">
+    <div *ngIf="snapshots.length > 0" class="replay-controls">
+      <button (click)="startReplay()" [disabled]="isReplaying">&#9654; Replay</button>
+      <button (click)="stopReplay()" [disabled]="!isReplaying">&#9646;&#9646; Stop</button>
+      <span class="snap-info" *ngIf="replayIndex >= 0">
+        Snapshot {{ replayIndex + 1 }} / {{ snapshots.length }}: {{ snapshots[replayIndex] | date:'medium' }}
+      </span>
+    </div>
+
+    <div *ngIf="replayIndex >= 0" class="replay-records">
+      <div *ngIf="replayRecords.length === 0" class="empty">No records in this snapshot.</div>
+      <div *ngFor="let r of replayRecords" class="record-card">
+        <div class="record-time">{{ r.snapshotAt | date:'HH:mm:ss' }}</div>
+        <ng-container *ngIf="dataType === 'incidents'">
+          <div class="record-title">{{ r.IncidentType }}: {{ r.Description }}</div>
+          <div class="record-meta">Lines: {{ r.LinesAffected }}</div>
+        </ng-container>
+        <ng-container *ngIf="dataType === 'elevators'">
+          <div class="record-title">{{ r.UnitType }} — {{ r.StationName }}</div>
+          <div class="record-meta">{{ r.SymptomDescription }}</div>
+        </ng-container>
+      </div>
+    </div>
+  </ng-container>
+
+  <!-- Adherence summary stats -->
+  <div *ngIf="dataType === 'adherence' && records.length > 0 && !loading" class="adh-stats">
+    <span>{{ records.length }} snapshots</span>
+    <span *ngIf="adherenceChartData.length > 0">Avg on-time: {{ avgOnTimePct }}%</span>
+  </div>
+
+  <div *ngIf="dataType !== 'adherence' && !isReplaying && records.length > 0" class="record-count">
     {{ records.length }} total records in range
   </div>
 </div>

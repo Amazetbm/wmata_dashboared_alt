@@ -39,4 +39,14 @@ export class WmataService {
   getPredictions(stationCode: string): Observable<any> {
     return this.http.get(`${this.base}/predictions/${stationCode}`);
   }
+
+  getLiveAdherence(): Observable<any> {
+    return this.http.get(`${this.base}/adherence/live`);
+  }
+
+  getHistoricalAdherence(from: string, to: string, line?: string): Observable<any> {
+    let params = new HttpParams().set('from', from).set('to', to);
+    if (line) params = params.set('line', line);
+    return this.http.get(`${this.base}/adherence/history`, { params });
+  }
 }

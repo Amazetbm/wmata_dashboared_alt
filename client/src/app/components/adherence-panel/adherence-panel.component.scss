@@ -1,0 +1,105 @@
+.adherence { grid-column: 1 / -1; }
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+  h2 { margin-bottom: 0; }
+}
+.snap-time { font-size: 11px; color: #6c7086; }
+
+// Summary bar
+.summary-section { margin-bottom: 12px; }
+.summary-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #313244;
+  margin-bottom: 6px;
+  .seg { transition: flex 0.4s ease; min-width: 2px; }
+  .seg.on-time      { background: #a6e3a1; }
+  .seg.minor        { background: #f9e2af; }
+  .seg.significant  { background: #f38ba8; }
+}
+.summary-labels {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  .label { display: flex; align-items: center; gap: 4px; }
+  .label::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+  .label.on-time::before    { background: #a6e3a1; }
+  .label.minor::before      { background: #f9e2af; }
+  .label.significant::before { background: #f38ba8; }
+  .label.total { color: #6c7086; margin-left: auto; }
+}
+
+// Controls
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  select { background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 4px 8px; border-radius: 4px; }
+  .count { font-size: 12px; color: #6c7086; }
+}
+
+// Table
+.table-wrap { overflow-x: auto; }
+.adherence-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th {
+    background: #313244;
+    padding: 7px 10px;
+    text-align: left;
+    color: #cba6f7;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #1e1e2e;
+    white-space: nowrap;
+  }
+  tr:hover td { background: #1e1e2e; }
+}
+
+.train-num { font-weight: 600; }
+
+.line-dot {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #000;
+}
+
+.dir { color: #6c7086; }
+
+.mono { font-family: monospace; font-size: 12px; }
+.dev {
+  font-weight: 600;
+  &.pos { color: #89dceb; }
+  &.neg { color: #f9e2af; }
+}
+
+// Status badges
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+
+  &.on-time     { background: rgba(166,227,161,0.15); color: #a6e3a1; border: 1px solid #a6e3a1; }
+  &.minor       { background: rgba(249,226,175,0.15); color: #f9e2af; border: 1px solid #f9e2af; }
+  &.significant { background: rgba(243,139,168,0.15); color: #f38ba8; border: 1px solid #f38ba8; }
+}
