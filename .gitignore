@@ -6,6 +6,6 @@ server/.env
 client/dist/
 *.log
 .idea/
-.claude/
+.claude/*
 .claude/settings.local.json
 CLAUDE.md
