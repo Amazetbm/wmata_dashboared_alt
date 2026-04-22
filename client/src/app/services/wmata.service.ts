@@ -49,4 +49,9 @@ export class WmataService {
     if (line) params = params.set('line', line);
     return this.http.get(`${this.base}/adherence/history`, { params });
   }
+
+  getAdherenceSnapshot(at: string): Observable<any> {
+    const params = new HttpParams().set('at', at);
+    return this.http.get(`${this.base}/adherence/snapshot`, { params });
+  }
 }

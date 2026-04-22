@@ -64,12 +64,14 @@ function computeAdherence(trainPositions, standardRoutes) {
 
     group.sort((a, b) => a.currentSeq - b.currentSeq);
     const spacing = len / (group.length + 1);
+    const minorThreshold = spacing * 0.10;
+    const significantThreshold = spacing * 0.25;
 
     group.forEach((t, i) => {
       const expectedSeq = Math.round(spacing * (i + 1));
       const deviation = t.currentSeq - expectedSeq;
       const abs = Math.abs(deviation);
-      const status = abs <= 2 ? 'on-time' : abs <= 5 ? 'minor' : 'significant';
+      const status = abs <= minorThreshold ? 'on-time' : abs <= significantThreshold ? 'minor' : 'significant';
 
       trains.push({
         trainId: t.TrainId,

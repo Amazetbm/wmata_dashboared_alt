@@ -1,74 +1,163 @@
 <div class="panel adherence">
+
+  <!-- Panel header with toggle -->
   <div class="panel-header">
     <h2>Schedule Adherence</h2>
-    <span class="snap-time" *ngIf="snapshotAt">as of {{ snapshotAt | date:'HH:mm:ss' }}</span>
+    <div class="view-toggle">
+      <button [class.active]="view === 'live'" (click)="switchView('live')">Live</button>
+      <button [class.active]="view === 'historical'" (click)="switchView('historical')">Historical</button>
+    </div>
+    <span class="snap-time" *ngIf="view === 'live' && snapshotAt">as of {{ snapshotAt | date:'HH:mm:ss' }}</span>
   </div>
 
-  <div *ngIf="loading" class="loading">Loading...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
-
-  <!-- Summary bar -->
-  <div *ngIf="!loading && summary.total > 0" class="summary-section">
-    <div class="summary-bar">
-      <div class="seg on-time"  [style.flex]="summary.onTime"      [title]="'On-time: ' + pct(summary.onTime) + '%'"></div>
-      <div class="seg minor"    [style.flex]="summary.minor"       [title]="'Minor: ' + pct(summary.minor) + '%'"></div>
-      <div class="seg significant" [style.flex]="summary.significant" [title]="'Significant: ' + pct(summary.significant) + '%'"></div>
-    </div>
-    <div class="summary-labels">
-      <span class="label on-time">On-time {{ pct(summary.onTime) }}%</span>
-      <span class="label minor">Minor {{ pct(summary.minor) }}%</span>
-      <span class="label significant">Significant {{ pct(summary.significant) }}%</span>
-      <span class="label total">{{ summary.total }} trains</span>
-    </div>
-  </div>
-
-  <!-- Line filter -->
-  <div class="controls" *ngIf="!loading">
+  <!-- Shared line filter -->
+  <div class="controls" *ngIf="view === 'live' ? !loading : true">
     <label>Line:</label>
     <select [(ngModel)]="selectedLine" (ngModelChange)="onLineChange()">
       <option value="">All Lines</option>
       <option *ngFor="let l of lines.slice(1)" [value]="l">{{ l }}</option>
     </select>
-    <span class="count">{{ filtered.length }} trains</span>
+    <span class="count" *ngIf="view === 'live'">{{ filtered.length }} trains</span>
   </div>
 
-  <!-- Train table -->
-  <div class="table-wrap" *ngIf="!loading && filtered.length > 0">
-    <table class="adherence-table">
-      <thead>
-        <tr>
-          <th>Train</th>
-          <th>Line</th>
-          <th>Dir</th>
-          <th>Current</th>
-          <th>Expected</th>
-          <th>Deviation</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let t of sortedFiltered()">
-          <td class="train-num">{{ t.trainNumber || t.trainId }}</td>
-          <td>
-            <span class="line-dot" [style.background]="colorFor(t.lineCode)">{{ t.lineCode }}</span>
-          </td>
-          <td class="dir">{{ t.directionNum === 1 ? '→' : '←' }}</td>
-          <td class="mono">{{ t.currentSeq }}</td>
-          <td class="mono">{{ t.expectedSeq }}</td>
-          <td class="mono dev" [class.pos]="t.deviation > 0" [class.neg]="t.deviation < 0">
-            {{ deviationLabel(t.deviation) }}
-          </td>
-          <td>
-            <span class="badge" [class]="t.status">
-              {{ t.status === 'on-time' ? 'On-time' : t.status === 'minor' ? 'Minor' : 'Significant' }}
-            </span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <!-- ═══════════════════════ LIVE VIEW ═══════════════════════════════ -->
+  <ng-container *ngIf="view === 'live'">
+    <div *ngIf="loading" class="loading">Loading…</div>
+    <div *ngIf="error" class="error">{{ error }}</div>
 
-  <div *ngIf="!loading && filtered.length === 0 && !error" class="empty">
-    No active trains{{ selectedLine ? ' on ' + selectedLine : '' }}.
-  </div>
+    <div *ngIf="!loading && summary.total > 0" class="summary-section">
+      <div class="summary-bar">
+        <div class="seg on-time"     [style.flex]="summary.onTime"      [title]="'On-time: ' + pct(summary.onTime) + '%'"></div>
+        <div class="seg minor"       [style.flex]="summary.minor"       [title]="'Minor: ' + pct(summary.minor) + '%'"></div>
+        <div class="seg significant" [style.flex]="summary.significant" [title]="'Significant: ' + pct(summary.significant) + '%'"></div>
+      </div>
+      <div class="summary-labels">
+        <span class="label on-time">On-time {{ pct(summary.onTime) }}%</span>
+        <span class="label minor">Minor {{ pct(summary.minor) }}%</span>
+        <span class="label significant">Significant {{ pct(summary.significant) }}%</span>
+        <span class="label total">{{ summary.total }} trains</span>
+      </div>
+    </div>
+
+    <div class="table-wrap" *ngIf="!loading && filtered.length > 0">
+      <table class="adherence-table">
+        <thead>
+          <tr>
+            <th>Train</th><th>Line</th><th>Dir</th>
+            <th>Current</th><th>Expected</th><th>Deviation</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let t of sortedFiltered()">
+            <td class="train-num">{{ t.trainNumber || t.trainId }}</td>
+            <td><span class="line-dot" [style.background]="colorFor(t.lineCode)">{{ t.lineCode }}</span></td>
+            <td class="dir">{{ t.directionNum === 1 ? '→' : '←' }}</td>
+            <td class="mono">{{ t.currentSeq }}</td>
+            <td class="mono">{{ t.expectedSeq }}</td>
+            <td class="mono dev" [class.pos]="t.deviation > 0" [class.neg]="t.deviation < 0">
+              {{ deviationLabel(t.deviation) }}
+            </td>
+            <td>
+              <span class="badge" [class]="t.status">
+                {{ t.status === 'on-time' ? 'On-time' : t.status === 'minor' ? 'Minor' : 'Significant' }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div *ngIf="!loading && filtered.length === 0 && !error" class="empty">
+      No active trains{{ selectedLine ? ' on ' + selectedLine : '' }}.
+    </div>
+  </ng-container>
+
+  <!-- ═══════════════════════ HISTORICAL VIEW ══════════════════════════ -->
+  <ng-container *ngIf="view === 'historical'">
+
+    <!-- Preset + custom date range -->
+    <div class="hist-controls">
+      <div class="presets">
+        <button [class.active]="preset === '3h'"  (click)="preset = '3h';  onPresetChange()">Last 3 h</button>
+        <button [class.active]="preset === '24h'" (click)="preset = '24h'; onPresetChange()">Last 24 h</button>
+        <button [class.active]="preset === '7d'"  (click)="preset = '7d';  onPresetChange()">Last 7 d</button>
+        <button [class.active]="preset === 'custom'" (click)="preset = 'custom'">Custom</button>
+      </div>
+      <ng-container *ngIf="preset === 'custom'">
+        <label>From: <input type="datetime-local" [(ngModel)]="from" /></label>
+        <label>To:   <input type="datetime-local" [(ngModel)]="to" /></label>
+        <button class="fetch-btn" (click)="fetchHistory()" [disabled]="histLoading">
+          {{ histLoading ? 'Loading…' : 'Fetch' }}
+        </button>
+      </ng-container>
+      <span class="hist-loading" *ngIf="histLoading && preset !== 'custom'">Loading…</span>
+    </div>
+
+    <div *ngIf="histError" class="error">{{ histError }}</div>
+
+    <!-- Chart -->
+    <div class="hist-chart-wrap" *ngIf="buckets.length > 0">
+      <canvas #chartCanvas></canvas>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="hist-stats" *ngIf="buckets.length > 0">
+      <div class="stat">
+        <span class="stat-label">Avg on-time</span>
+        <span class="stat-value on-time">{{ avgOnTimePct }}%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Worst period</span>
+        <span class="stat-value significant">{{ worstBucket?.label ?? '—' }} ({{ worstBucket?.onTimePct ?? 0 }}%)</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Best period</span>
+        <span class="stat-value on-time">{{ bestBucket?.label ?? '—' }} ({{ bestBucket?.onTimePct ?? 0 }}%)</span>
+      </div>
+      <span class="stat-hint">Click a chart point to drill down</span>
+    </div>
+
+    <div *ngIf="!histLoading && buckets.length === 0 && hasFetched" class="empty">
+      No data in selected range{{ selectedLine ? ' for ' + selectedLine : '' }}.
+    </div>
+
+    <!-- Drill-down table -->
+    <div class="drill-down" *ngIf="drillBucket">
+      <div class="drill-header">
+        <span>Snapshot near {{ drillBucket.label }}{{ selectedLine ? ' — ' + selectedLine : '' }}</span>
+        <button class="close-btn" (click)="closeDrill()">✕</button>
+      </div>
+      <div *ngIf="drillLoading" class="loading">Loading…</div>
+      <div *ngIf="!drillLoading && drillTrains.length === 0" class="empty">No train data for this snapshot.</div>
+      <div class="table-wrap" *ngIf="!drillLoading && drillTrains.length > 0">
+        <table class="adherence-table">
+          <thead>
+            <tr>
+              <th>Train</th><th>Line</th><th>Dir</th>
+              <th>Current</th><th>Expected</th><th>Deviation</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let t of drillTrains">
+              <td class="train-num">{{ t.trainNumber || t.trainId }}</td>
+              <td><span class="line-dot" [style.background]="colorFor(t.lineCode)">{{ t.lineCode }}</span></td>
+              <td class="dir">{{ t.directionNum === 1 ? '→' : '←' }}</td>
+              <td class="mono">{{ t.currentSeq }}</td>
+              <td class="mono">{{ t.expectedSeq }}</td>
+              <td class="mono dev" [class.pos]="t.deviation > 0" [class.neg]="t.deviation < 0">
+                {{ deviationLabel(t.deviation) }}
+              </td>
+              <td>
+                <span class="badge" [class]="t.status">
+                  {{ t.status === 'on-time' ? 'On-time' : t.status === 'minor' ? 'Minor' : 'Significant' }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </ng-container>
+
 </div>

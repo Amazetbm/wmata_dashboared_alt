@@ -45,38 +45,3 @@
 .record-title { font-size: 13px; margin: 4px 0; }
 .record-meta { font-size: 12px; color: #a6adc8; }
 .record-count { font-size: 12px; color: #6c7086; margin-top: 8px; }
-
-// Adherence stacked bars
-.adherence-bars { align-items: flex-end; }
-.stacked-bar {
-  display: flex;
-  flex-direction: column-reverse;  // on-time (green) sits at the bottom
-  width: 20px;
-  height: 80px;
-  border-radius: 2px;
-  overflow: hidden;
-  .seg { min-height: 1px; }
-  .seg.on-time     { background: #a6e3a1; }
-  .seg.minor       { background: #f9e2af; }
-  .seg.significant { background: #f38ba8; }
-}
-
-.adh-legend {
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-  margin-top: 6px;
-  span { display: flex; align-items: center; gap: 4px; }
-  span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
-  .on-time::before     { background: #a6e3a1; }
-  .minor::before       { background: #f9e2af; }
-  .significant::before { background: #f38ba8; }
-}
-
-.adh-stats {
-  display: flex;
-  gap: 16px;
-  font-size: 12px;
-  color: #6c7086;
-  margin-top: 8px;
-}

@@ -43,4 +43,22 @@ router.get('/history', async (req, res) => {
   }
 });
 
+// Single closest snapshot with full trains array — used for drill-down
+router.get('/snapshot', async (req, res) => {
+  try {
+    const target = new Date(req.query.at);
+    const [before, after] = await Promise.all([
+      AdherenceSnapshot.findOne({ snapshotAt: { $lte: target } }).sort({ snapshotAt: -1 }).lean(),
+      AdherenceSnapshot.findOne({ snapshotAt: { $gte: target } }).sort({ snapshotAt: 1 }).lean(),
+    ]);
+    let closest = before;
+    if (after && (!before || Math.abs(after.snapshotAt - target) < Math.abs(before.snapshotAt - target))) {
+      closest = after;
+    }
+    res.json(closest || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
