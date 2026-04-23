@@ -11,7 +11,16 @@
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
+  // minmax(0, ...) prevents grid tracks from growing beyond their fraction to fit content,
+  // which is what causes horizontal overflow when tables are wide.
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
+
+  // These panels span all three columns and stack as full-width rows.
+  app-adherence-panel,
+  app-outage-panel,
+  app-historical-view {
+    grid-column: 1 / -1;
+  }
 }

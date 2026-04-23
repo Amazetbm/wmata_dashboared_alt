@@ -1,0 +1,153 @@
+<div class="panel outage-panel">
+
+  <!-- Panel header: title, view toggle, independent filters -->
+  <div class="panel-header">
+    <h2>Elevator &amp; Escalator Outages</h2>
+    <div class="view-toggle">
+      <button [class.active]="view === 'live'"       (click)="switchView('live')">Live</button>
+      <button [class.active]="view === 'historical'" (click)="switchView('historical')">Historical</button>
+    </div>
+    <div class="filter-controls">
+      <div class="type-filter">
+        <button [class.active]="typeFilter === 'ALL'"       (click)="typeFilter = 'ALL'">All</button>
+        <button [class.active]="typeFilter === 'ELEVATOR'"  (click)="typeFilter = 'ELEVATOR'">Elevators</button>
+        <button [class.active]="typeFilter === 'ESCALATOR'" (click)="typeFilter = 'ESCALATOR'">Escalators</button>
+      </div>
+      <input class="station-search" type="text" [(ngModel)]="stationSearch" placeholder="Search station…" />
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ LIVE VIEW ═══════════════════════════════ -->
+  <ng-container *ngIf="view === 'live'">
+    <div *ngIf="loading" class="loading">Loading…</div>
+    <div *ngIf="error"   class="error">{{ error }}</div>
+
+    <!-- Summary bar -->
+    <div class="summary-row" *ngIf="!loading">
+      <div class="stat-pill">
+        <span class="stat-label">Total</span>
+        <span class="stat-value">{{ liveSummary.total }}</span>
+      </div>
+      <div class="stat-pill elevator">
+        <span class="stat-label">Elevators</span>
+        <span class="stat-value">{{ liveSummary.elevators }}</span>
+      </div>
+      <div class="stat-pill escalator">
+        <span class="stat-label">Escalators</span>
+        <span class="stat-value">{{ liveSummary.escalators }}</span>
+      </div>
+      <div class="stat-pill ada" [class.active]="liveSummary.adaStations > 0">
+        <span class="stat-label">ADA Concern Stations</span>
+        <span class="stat-value">{{ liveSummary.adaStations }}</span>
+      </div>
+    </div>
+
+    <!-- Live table -->
+    <div class="table-wrap" *ngIf="!loading && liveDisplayed.length > 0">
+      <table class="outage-table">
+        <thead>
+          <tr>
+            <th>Station</th><th>Type</th><th>Unit</th><th>Location</th>
+            <th>Out of Service</th><th>Est. Return</th><th>Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let o of liveDisplayed" [class.ada-row]="o.adaConcern">
+            <td class="station-cell">
+              <span *ngIf="o.adaConcern" class="ada-badge" title="ADA Concern: both elevator and escalator out at this station">ADA</span>
+              {{ o.StationName }}
+            </td>
+            <td>
+              <span class="type-badge" [class.elevator]="o.UnitType === 'ELEVATOR'" [class.escalator]="o.UnitType === 'ESCALATOR'">
+                {{ o.UnitType }}
+              </span>
+            </td>
+            <td class="mono">{{ o.UnitName }}</td>
+            <td class="location">{{ o.LocationDescription }}</td>
+            <td class="mono">{{ formatDate(o.TimeOutOfService) }}</td>
+            <td [class.no-est]="!o.EstimatedReturnToService">{{ formatEst(o.EstimatedReturnToService) }}</td>
+            <td class="duration mono" [class.amber]="o.durationClass === 'amber'" [class.red]="o.durationClass === 'red'">
+              {{ o.durationLabel }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div *ngIf="!loading && liveDisplayed.length === 0 && !error" class="empty">
+      No outages
+      <ng-container *ngIf="typeFilter !== 'ALL'"> for type {{ typeFilter }}</ng-container>
+      <ng-container *ngIf="stationSearch"> matching &ldquo;{{ stationSearch }}&rdquo;</ng-container>.
+    </div>
+  </ng-container>
+
+  <!-- ═══════════════════════ HISTORICAL VIEW ══════════════════════════ -->
+  <ng-container *ngIf="view === 'historical'">
+
+    <!-- Date range presets + custom picker -->
+    <div class="hist-controls">
+      <div class="presets">
+        <button [class.active]="histPreset === '24h'"    (click)="histPreset = '24h';    onHistPresetChange()">Last 24 h</button>
+        <button [class.active]="histPreset === '7d'"     (click)="histPreset = '7d';     onHistPresetChange()">Last 7 d</button>
+        <button [class.active]="histPreset === 'custom'" (click)="histPreset = 'custom'">Custom</button>
+      </div>
+      <ng-container *ngIf="histPreset === 'custom'">
+        <label>From: <input type="datetime-local" [(ngModel)]="histFrom" /></label>
+        <label>To:   <input type="datetime-local" [(ngModel)]="histTo" /></label>
+        <button class="fetch-btn" (click)="fetchHistory()" [disabled]="histLoading">
+          {{ histLoading ? 'Loading…' : 'Fetch' }}
+        </button>
+      </ng-container>
+      <span *ngIf="histLoading && histPreset !== 'custom'" class="hist-loading">Loading…</span>
+    </div>
+
+    <div *ngIf="histError" class="error">{{ histError }}</div>
+
+    <!-- Bar chart: elevator + escalator counts per day -->
+    <div class="hist-chart-wrap" *ngIf="histChartData.length > 0">
+      <canvas #outageChartCanvas></canvas>
+    </div>
+
+    <!-- Historical detail table -->
+    <div *ngIf="histDisplayed.length > 0">
+      <div class="hist-count">
+        {{ histDisplayed.length }} outage{{ histDisplayed.length !== 1 ? 's' : '' }} active in range
+      </div>
+      <div class="table-wrap">
+        <table class="outage-table">
+          <thead>
+            <tr>
+              <th>Station</th><th>Type</th><th>Unit</th><th>Location</th>
+              <th>Out of Service</th><th>Est. Return</th><th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let o of histDisplayed" [class.ada-row]="o.adaConcern">
+              <td class="station-cell">
+                <span *ngIf="o.adaConcern" class="ada-badge" title="ADA Concern during this period">ADA</span>
+                {{ o.StationName }}
+              </td>
+              <td>
+                <span class="type-badge" [class.elevator]="o.UnitType === 'ELEVATOR'" [class.escalator]="o.UnitType === 'ESCALATOR'">
+                  {{ o.UnitType }}
+                </span>
+              </td>
+              <td class="mono">{{ o.UnitName }}</td>
+              <td class="location">{{ o.LocationDescription }}</td>
+              <td class="mono">{{ formatDate(o.TimeOutOfService) }}</td>
+              <td [class.no-est]="!o.EstimatedReturnToService">{{ formatEst(o.EstimatedReturnToService) }}</td>
+              <td class="duration mono" [class.amber]="o.durationClass === 'amber'" [class.red]="o.durationClass === 'red'">
+                {{ o.durationLabel }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div *ngIf="!histLoading && histDisplayed.length === 0 && hasFetched" class="empty">
+      No outages in selected range<ng-container *ngIf="typeFilter !== 'ALL' || stationSearch"> for current filters</ng-container>.
+    </div>
+
+  </ng-container>
+</div>

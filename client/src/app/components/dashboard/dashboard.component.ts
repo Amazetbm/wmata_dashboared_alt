@@ -5,6 +5,7 @@ import { TrainPositionsPanelComponent } from '../train-positions-panel/train-pos
 import { StationMonitorComponent } from '../station-monitor/station-monitor.component';
 import { HistoricalViewComponent } from '../historical-view/historical-view.component';
 import { AdherencePanelComponent } from '../adherence-panel/adherence-panel.component';
+import { OutagePanelComponent } from '../outage-panel/outage-panel.component';
 
 @Component({
   selector: 'app-dashboard',
@@ -16,6 +17,7 @@ import { AdherencePanelComponent } from '../adherence-panel/adherence-panel.comp
     StationMonitorComponent,
     HistoricalViewComponent,
     AdherencePanelComponent,
+    OutagePanelComponent,
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss'

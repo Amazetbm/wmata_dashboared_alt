@@ -54,4 +54,13 @@ export class WmataService {
     const params = new HttpParams().set('at', at);
     return this.http.get(`${this.base}/adherence/snapshot`, { params });
   }
+
+  getLiveOutages(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/outages`);
+  }
+
+  getOutageHistory(from: string, to: string): Observable<any> {
+    const params = new HttpParams().set('from', from).set('to', to);
+    return this.http.get(`${this.base}/outages/history`, { params });
+  }
 }
