@@ -63,4 +63,8 @@ export class WmataService {
     const params = new HttpParams().set('from', from).set('to', to);
     return this.http.get(`${this.base}/outages/history`, { params });
   }
+
+  getMapData(): Observable<any> {
+    return this.http.get(`${this.base}/map`);
+  }
 }

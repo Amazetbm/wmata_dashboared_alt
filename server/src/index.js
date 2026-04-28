@@ -9,6 +9,7 @@ const elevatorRoutes = require('./routes/elevators');
 const predictionRoutes = require('./routes/predictions');
 const adherenceRoutes = require('./routes/adherence');
 const outageRoutes    = require('./routes/outages');
+const mapRoutes       = require('./routes/map');
 
 const app = express();
 app.use(cors());
@@ -22,6 +23,7 @@ app.use('/api/elevators', elevatorRoutes);
 app.use('/api/predictions', predictionRoutes);
 app.use('/api/adherence', adherenceRoutes);
 app.use('/api/outages',  outageRoutes);
+app.use('/api/map',     mapRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {

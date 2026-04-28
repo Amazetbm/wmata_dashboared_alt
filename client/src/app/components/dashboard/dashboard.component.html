@@ -2,8 +2,11 @@
   <div class="logo">WMATA Operator Dashboard</div>
   <div class="subtitle">Live data auto-refreshes every 30 seconds</div>
 </header>
+<div class="map-row">
+  <app-map-panel></app-map-panel>
+</div>
 <main class="dashboard-grid">
-  <app-incidents-panel></app-incidents-panel>
+  <app-incidents-panel id="incidents-panel"></app-incidents-panel>
   <app-train-positions-panel></app-train-positions-panel>
   <app-station-monitor></app-station-monitor>
   <app-adherence-panel></app-adherence-panel>

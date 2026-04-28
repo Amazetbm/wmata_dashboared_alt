@@ -9,6 +9,11 @@
 .logo { font-size: 20px; font-weight: 700; color: #cba6f7; letter-spacing: 1px; }
 .subtitle { font-size: 12px; color: #6c7086; }
 
+.map-row {
+  padding: 0 16px;
+  margin-bottom: 0;
+}
+
 .dashboard-grid {
   display: grid;
   // minmax(0, ...) prevents grid tracks from growing beyond their fraction to fit content,

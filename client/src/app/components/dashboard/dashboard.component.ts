@@ -6,12 +6,14 @@ import { StationMonitorComponent } from '../station-monitor/station-monitor.comp
 import { HistoricalViewComponent } from '../historical-view/historical-view.component';
 import { AdherencePanelComponent } from '../adherence-panel/adherence-panel.component';
 import { OutagePanelComponent } from '../outage-panel/outage-panel.component';
+import { MapPanelComponent } from '../map-panel/map-panel.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [
     CommonModule,
+    MapPanelComponent,
     IncidentsPanelComponent,
     TrainPositionsPanelComponent,
     StationMonitorComponent,

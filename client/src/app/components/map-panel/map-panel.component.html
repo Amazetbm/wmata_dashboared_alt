@@ -1,0 +1,30 @@
+<section class="panel map-panel">
+  <div class="map-panel-header">
+    <h2>Live Network Map</h2>
+    @if (trainCount > 0) {
+      <span class="map-train-count">{{ trainCount }} trains tracked</span>
+    }
+  </div>
+
+  <div class="map-line-filter">
+    <span class="filter-label">Filter:</span>
+    @for (line of LINES; track line) {
+      <button
+        class="line-btn"
+        [class.active]="selectedLine === line"
+        [style.--btn-color]="line === 'ALL' ? '#6c7086' : LINE_COLORS[line]"
+        (click)="selectLine(line)">
+        {{ LINE_LABELS[line] }}
+      </button>
+    }
+  </div>
+
+  @if (loading) {
+    <div class="loading">Loading map data…</div>
+  }
+  @if (error) {
+    <div class="error">{{ error }}</div>
+  }
+
+  <div #mapContainer class="map-container"></div>
+</section>

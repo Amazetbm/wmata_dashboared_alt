@@ -32,3 +32,138 @@ body {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #1e1e2e; }
 ::-webkit-scrollbar-thumb { background: #45475a; border-radius: 3px; }
+
+// ── Leaflet dark-theme overrides ─────────────────────────────────────────────
+
+.leaflet-popup-content-wrapper {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+.leaflet-popup-tip {
+  background: #1e1e2e;
+}
+
+.leaflet-popup-close-button {
+  color: #6c7086 !important;
+  &:hover { color: #cdd6f4 !important; }
+}
+
+.leaflet-popup-content {
+  margin: 10px 14px;
+}
+
+.leaflet-control-layers {
+  background: #1e1e2e;
+  border: 1px solid #313244 !important;
+  color: #cdd6f4;
+  border-radius: 6px;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: #313244;
+}
+
+.leaflet-control-layers-separator {
+  border-top-color: #313244;
+}
+
+// ── Map popup content ────────────────────────────────────────────────────────
+
+.map-popup {
+  font-size: 13px;
+  line-height: 1.5;
+  min-width: 160px;
+}
+
+.map-popup-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #89b4fa;
+  margin-bottom: 6px;
+}
+
+.map-popup-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.map-line-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #11111b;
+  letter-spacing: 0.3px;
+}
+
+.map-popup-detail {
+  font-size: 12px;
+  color: #a6adc8;
+  margin-bottom: 3px;
+
+  strong {
+    color: #cdd6f4;
+  }
+}
+
+.map-popup-incidents {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #313244;
+}
+
+.map-popup-incidents-header {
+  font-weight: 700;
+  color: #f9e2af;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.map-popup-incident-desc {
+  font-size: 11px;
+  color: #cdd6f4;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.map-popup-scroll-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #313244;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: #45475a;
+  }
+}
+
+// ── Incident pulsing ring ────────────────────────────────────────────────────
+
+.pulse-ring {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #F59E0B;
+  border-radius: 50%;
+  background: transparent;
+  animation: mapPulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes mapPulse {
+  0%, 100% { transform: scale(1);   opacity: 0.85; }
+  50%       { transform: scale(1.7); opacity: 0.15; }
+}
