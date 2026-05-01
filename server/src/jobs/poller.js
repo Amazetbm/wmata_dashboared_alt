@@ -4,6 +4,8 @@ const Incident = require('../models/Incident');
 const TrainPosition = require('../models/TrainPosition');
 const ElevatorOutage = require('../models/ElevatorOutage');
 const AdherenceSnapshot = require('../models/AdherenceSnapshot');
+const BusPosition = require('../models/BusPosition');
+const BusIncident = require('../models/BusIncident');
 
 // Standard routes rarely change — refresh every 10 minutes
 let cachedRoutes = null;
@@ -112,10 +114,12 @@ async function fetchAndStore() {
   const snapshotAt = new Date();
 
   try {
-    const [incRes, trainRes, elevRes] = await Promise.allSettled([
+    const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes] = await Promise.allSettled([
       wmataClient.get('/Incidents.svc/json/Incidents'),
       wmataClient.get('/TrainPositions/TrainPositions?contentType=json'),
       wmataClient.get('/Incidents.svc/json/ElevatorIncidents'),
+      wmataClient.get('/Bus.svc/json/jBusPositions'),
+      wmataClient.get('/Bus.svc/json/jBusIncidents'),
     ]);
 
     if (incRes.status === 'fulfilled') {
@@ -139,6 +143,20 @@ async function fetchAndStore() {
       if (outages.length) await ElevatorOutage.insertMany(outages);
     } else {
       console.error('Elevator outages fetch error:', elevRes.reason?.message);
+    }
+
+    if (busPositionsRes.status === 'fulfilled') {
+      const busPositions = (busPositionsRes.value.data.BusPositions || []).map(p => ({ ...p, snapshotAt }));
+      if (busPositions.length) await BusPosition.insertMany(busPositions);
+    } else {
+      console.error('Bus positions fetch error:', busPositionsRes.reason?.message);
+    }
+
+    if (busIncidentsRes.status === 'fulfilled') {
+      const busIncidents = (busIncidentsRes.value.data.BusIncidents || []).map(i => ({ ...i, snapshotAt }));
+      if (busIncidents.length) await BusIncident.insertMany(busIncidents);
+    } else {
+      console.error('Bus incidents fetch error:', busIncidentsRes.reason?.message);
     }
 
     // Compute and persist adherence if we have train positions

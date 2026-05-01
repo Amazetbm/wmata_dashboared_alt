@@ -7,6 +7,7 @@ import { HistoricalViewComponent } from '../historical-view/historical-view.comp
 import { AdherencePanelComponent } from '../adherence-panel/adherence-panel.component';
 import { OutagePanelComponent } from '../outage-panel/outage-panel.component';
 import { MapPanelComponent } from '../map-panel/map-panel.component';
+import { BusMapComponent } from '../bus-map/bus-map.component';
 
 @Component({
   selector: 'app-dashboard',
@@ -20,8 +21,15 @@ import { MapPanelComponent } from '../map-panel/map-panel.component';
     HistoricalViewComponent,
     AdherencePanelComponent,
     OutagePanelComponent,
+    BusMapComponent,
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss'
 })
-export class DashboardComponent {}
+export class DashboardComponent {
+  activeTab: 'rail' | 'bus' = 'rail';
+
+  setTab(tab: 'rail' | 'bus'): void {
+    this.activeTab = tab;
+  }
+}

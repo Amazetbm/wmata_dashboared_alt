@@ -67,4 +67,8 @@ export class WmataService {
   getMapData(): Observable<any> {
     return this.http.get(`${this.base}/map`);
   }
+
+  getBusMapData(): Observable<any> {
+    return this.http.get(`${this.base}/bus/map`);
+  }
 }

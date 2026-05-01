@@ -3,11 +3,48 @@
   border-bottom: 2px solid #313244;
   padding: 16px 24px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
 }
+
 .logo { font-size: 20px; font-weight: 700; color: #cba6f7; letter-spacing: 1px; }
-.subtitle { font-size: 12px; color: #6c7086; }
+.subtitle { font-size: 12px; color: #6c7086; margin-left: auto; }
+
+// ── Tab switcher ─────────────────────────────────────────────────────────────
+
+.tab-switcher {
+  display: flex;
+  gap: 2px;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.tab-btn {
+  padding: 6px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6c7086;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  letter-spacing: 0.3px;
+
+  &:hover {
+    color: #cdd6f4;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  &.active {
+    background: #313244;
+    color: #cba6f7;
+  }
+}
+
+// ── Rail tab content ─────────────────────────────────────────────────────────
 
 .map-row {
   padding: 0 16px;
@@ -28,4 +65,10 @@
   app-historical-view {
     grid-column: 1 / -1;
   }
+}
+
+// ── Bus tab content ──────────────────────────────────────────────────────────
+
+.bus-tab-container {
+  padding: 16px;
 }

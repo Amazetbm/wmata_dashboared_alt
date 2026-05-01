@@ -1,15 +1,38 @@
 <header class="top-bar">
   <div class="logo">WMATA Operator Dashboard</div>
+  <div class="tab-switcher">
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'rail'"
+      (click)="setTab('rail')">
+      Rail
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'bus'"
+      (click)="setTab('bus')">
+      Bus
+    </button>
+  </div>
   <div class="subtitle">Live data auto-refreshes every 30 seconds</div>
 </header>
-<div class="map-row">
-  <app-map-panel></app-map-panel>
+
+<!-- Rail view — [hidden] keeps the component alive so map state and timers are preserved -->
+<div [hidden]="activeTab !== 'rail'">
+  <div class="map-row">
+    <app-map-panel></app-map-panel>
+  </div>
+  <main class="dashboard-grid">
+    <app-incidents-panel id="incidents-panel"></app-incidents-panel>
+    <app-train-positions-panel></app-train-positions-panel>
+    <app-station-monitor></app-station-monitor>
+    <app-adherence-panel></app-adherence-panel>
+    <app-outage-panel></app-outage-panel>
+    <app-historical-view></app-historical-view>
+  </main>
 </div>
-<main class="dashboard-grid">
-  <app-incidents-panel id="incidents-panel"></app-incidents-panel>
-  <app-train-positions-panel></app-train-positions-panel>
-  <app-station-monitor></app-station-monitor>
-  <app-adherence-panel></app-adherence-panel>
-  <app-outage-panel></app-outage-panel>
-  <app-historical-view></app-historical-view>
-</main>
+
+<!-- Bus view — [hidden] preserves the Leaflet map instance between tab switches -->
+<div [hidden]="activeTab !== 'bus'" class="bus-tab-container">
+  <app-bus-map [active]="activeTab === 'bus'"></app-bus-map>
+</div>

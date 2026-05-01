@@ -1,0 +1,66 @@
+<section class="panel bus-map-panel">
+  <div class="bus-map-header">
+    <h2>Live Bus Network Map</h2>
+    @if (busData?.positions?.length) {
+      <span class="bus-count">{{ busData.positions.length }} buses tracked</span>
+    }
+  </div>
+
+  <div class="bus-map-toolbar">
+    <div class="route-search-wrapper">
+      <input
+        type="text"
+        class="route-search"
+        placeholder="Search route (e.g. 30N, Friendship Heights)…"
+        [(ngModel)]="searchInput"
+        (input)="onSearchChange()" />
+      @if (searchInput) {
+        <button class="search-clear-btn" (click)="clearSearch()" title="Clear search">✕</button>
+      }
+    </div>
+    @if (searchedRouteId) {
+      <span class="search-active-label">Showing route: <strong>{{ searchedRouteId }}</strong></span>
+    }
+  </div>
+
+  @if (loading) {
+    <div class="loading">Loading bus map data…</div>
+  }
+  @if (error) {
+    <div class="error">{{ error }}</div>
+  }
+
+  <div class="bus-map-body">
+    <div #mapContainer class="bus-map-container"></div>
+
+    <aside class="incident-sidebar" #incidentSidebar>
+      <div class="incident-sidebar-header">
+        <h3>Active Incidents</h3>
+        @if (busData?.incidents?.length) {
+          <span class="incident-count">{{ busData.incidents.length }}</span>
+        }
+      </div>
+
+      <div class="incident-list">
+        @if (!busData?.incidents?.length) {
+          <div class="empty">No active bus incidents</div>
+        }
+        @for (incident of busData?.incidents; track incident.IncidentID) {
+          <div
+            class="incident-item"
+            [class.highlighted]="highlightedIncidentId === incident.IncidentID"
+            [id]="'incident-' + incident.IncidentID"
+            (click)="onIncidentClick(incident)">
+            <div class="incident-routes">
+              @for (route of incident.RoutesAffected; track route) {
+                <span class="incident-route-chip">{{ route }}</span>
+              }
+            </div>
+            <div class="incident-type">{{ incident.IncidentType }}</div>
+            <div class="incident-desc">{{ incident.Description }}</div>
+          </div>
+        }
+      </div>
+    </aside>
+  </div>
+</section>

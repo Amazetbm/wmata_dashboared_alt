@@ -167,3 +167,9 @@ body {
   0%, 100% { transform: scale(1);   opacity: 0.85; }
   50%       { transform: scale(1.7); opacity: 0.15; }
 }
+
+.bus-pulse-ring {
+  width: 28px;
+  height: 28px;
+  border-width: 2px;
+}
