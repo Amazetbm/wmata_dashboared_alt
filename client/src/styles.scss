@@ -105,7 +105,7 @@ body {
 
 .map-popup-detail {
   font-size: 12px;
-  color: #a6adc8;
+  color: #222222;
   margin-bottom: 3px;
 
   strong {
@@ -172,4 +172,19 @@ body {
   width: 28px;
   height: 28px;
   border-width: 2px;
+}
+
+// ── Bus marker cluster icon ───────────────────────────────────────────────────
+
+.bus-cluster-icon {
+  border-radius: 50%;
+  background: rgba(66, 153, 225, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }

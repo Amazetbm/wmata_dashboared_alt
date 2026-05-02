@@ -1,11 +1,4 @@
-<section class="panel bus-map-panel">
-  <div class="bus-map-header">
-    <h2>Live Bus Network Map</h2>
-    @if (busData?.positions?.length) {
-      <span class="bus-count">{{ busData.positions.length }} buses tracked</span>
-    }
-  </div>
-
+<div class="bus-map-page">
   <div class="bus-map-toolbar">
     <div class="route-search-wrapper">
       <input
@@ -19,28 +12,25 @@
       }
     </div>
     @if (searchedRouteId) {
-      <span class="search-active-label">Showing route: <strong>{{ searchedRouteId }}</strong></span>
+      <span class="search-active-label">Showing: <strong>{{ searchedRouteId }}</strong></span>
     }
+    @if (busData?.positions?.length) {
+      <span class="bus-count">{{ busData.positions.length }} buses tracked</span>
+    }
+    @if (loading) { <span class="loading">Loading…</span> }
+    @if (error) { <span class="error">{{ error }}</span> }
   </div>
 
-  @if (loading) {
-    <div class="loading">Loading bus map data…</div>
-  }
-  @if (error) {
-    <div class="error">{{ error }}</div>
-  }
-
   <div class="bus-map-body">
-    <div #mapContainer class="bus-map-container"></div>
+    <div #mapContainer class="bus-map-leaflet"></div>
 
-    <aside class="incident-sidebar" #incidentSidebar>
+    <aside class="incident-sidebar">
       <div class="incident-sidebar-header">
         <h3>Active Incidents</h3>
         @if (busData?.incidents?.length) {
           <span class="incident-count">{{ busData.incidents.length }}</span>
         }
       </div>
-
       <div class="incident-list">
         @if (!busData?.incidents?.length) {
           <div class="empty">No active bus incidents</div>
@@ -63,4 +53,4 @@
       </div>
     </aside>
   </div>
-</section>
+</div>

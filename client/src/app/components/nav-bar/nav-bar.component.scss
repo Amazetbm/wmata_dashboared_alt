@@ -1,0 +1,55 @@
+:host { display: block; }
+
+.nav-bar {
+  background: #1e1e2e;
+  border-bottom: 2px solid #313244;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: #cba6f7;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 2px;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.nav-link {
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: #6c7086;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+  letter-spacing: 0.3px;
+
+  &:hover {
+    color: #cdd6f4;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  &.active {
+    background: #313244;
+    color: #cba6f7;
+  }
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #6c7086;
+  margin-left: auto;
+}
