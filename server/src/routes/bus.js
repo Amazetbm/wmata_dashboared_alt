@@ -33,7 +33,7 @@ router.get('/map', async (req, res) => {
       wmataClient.get('/Bus.svc/json/jBusPositions'),
       wmataClient.get('/Bus.svc/json/jRoutes'),
       wmataClient.get('/Bus.svc/json/jStops'),
-      wmataClient.get('/Bus.svc/json/jBusIncidents'),
+      wmataClient.get('/Incidents.svc/json/BusIncidents'),
     ]);
 
     const positions = posRes.status === 'fulfilled' ? (posRes.value.data.BusPositions || []) : [];

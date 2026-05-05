@@ -119,7 +119,7 @@ async function fetchAndStore() {
       wmataClient.get('/TrainPositions/TrainPositions?contentType=json'),
       wmataClient.get('/Incidents.svc/json/ElevatorIncidents'),
       wmataClient.get('/Bus.svc/json/jBusPositions'),
-      wmataClient.get('/Bus.svc/json/jBusIncidents'),
+      wmataClient.get('/Incidents.svc/json/BusIncidents'),
     ]);
 
     if (incRes.status === 'fulfilled') {
