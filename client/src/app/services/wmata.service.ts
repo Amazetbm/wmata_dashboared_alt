@@ -71,4 +71,10 @@ export class WmataService {
   getBusMapData(): Observable<any> {
     return this.http.get(`${this.base}/bus/map`);
   }
+
+  getBusIncidentHistory(startTime: string, endTime: string, routeId?: string): Observable<any> {
+    let params = new HttpParams().set('startTime', startTime).set('endTime', endTime);
+    if (routeId) params = params.set('routeId', routeId);
+    return this.http.get(`${this.base}/bus/incidents/history`, { params });
+  }
 }

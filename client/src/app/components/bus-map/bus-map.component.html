@@ -53,4 +53,140 @@
       </div>
     </aside>
   </div>
+
+  <!-- ── Historical incidents ─────────────────────────────────────────────── -->
+
+  <div class="hist-divider">
+    <span class="hist-divider-label">Historical Bus Incidents</span>
+  </div>
+
+  <section class="hist-section">
+    <div class="hist-toolbar">
+      <div class="hist-presets">
+        <button class="hist-preset-btn" [class.active]="histPreset === '24h'" (click)="setHistPreset('24h')">Last 24h</button>
+        <button class="hist-preset-btn" [class.active]="histPreset === '7d'"  (click)="setHistPreset('7d')">Last 7 days</button>
+        <button class="hist-preset-btn" [class.active]="histPreset === '30d'" (click)="setHistPreset('30d')">Last 30 days</button>
+        <button class="hist-preset-btn" [class.active]="histPreset === 'custom'" (click)="setHistPreset('custom')">Custom</button>
+      </div>
+      @if (histPreset === 'custom') {
+        <div class="hist-custom-range">
+          <input type="date" class="hist-date-input" [(ngModel)]="histDateFrom" />
+          <span class="hist-range-sep">to</span>
+          <input type="date" class="hist-date-input" [(ngModel)]="histDateTo" />
+          <button class="hist-apply-btn" (click)="applyCustomRange()">Apply</button>
+        </div>
+      }
+      <input
+        type="text"
+        class="hist-route-input"
+        placeholder="Filter by route…"
+        [(ngModel)]="histRouteFilter"
+        (keyup.enter)="fetchHistory()" />
+    </div>
+
+    @if (histLoading) {
+      <div class="hist-state"><span class="loading">Loading historical data…</span></div>
+    }
+    @if (histError) {
+      <div class="hist-state"><span class="error">{{ histError }}</span></div>
+    }
+    @if (!histLoading && !histError && histData && histData.summary.total === 0) {
+      <div class="hist-state">
+        No incident data found for this range. Bus incident polling stores records from when the
+        dashboard was first deployed — earlier dates will return no results.
+      </div>
+    }
+
+    @if (!histLoading && histData && histData.summary.total > 0) {
+      <div class="hist-summary-row">
+        <div class="hist-stat">
+          <div class="hist-stat-label">Total Incidents</div>
+          <div class="hist-stat-value">{{ histData.summary.total }}</div>
+        </div>
+        <div class="hist-stat">
+          <div class="hist-stat-label">Most Affected Route</div>
+          <div class="hist-stat-value">{{ histData.summary.mostAffectedRoute ?? '—' }}</div>
+        </div>
+        <div class="hist-stat">
+          <div class="hist-stat-label">Most Common Type</div>
+          <div class="hist-stat-value">{{ histData.summary.mostCommonType ?? '—' }}</div>
+        </div>
+        <div class="hist-stat">
+          <div class="hist-stat-label">Avg Daily</div>
+          <div class="hist-stat-value">{{ histData.summary.avgDaily | number:'1.1-1' }}</div>
+        </div>
+      </div>
+
+      <div class="hist-charts-row">
+        <div class="hist-chart-panel">
+          <div class="hist-chart-title">
+            Daily Incidents by Type
+            @if (histDrillDate) {
+              <button class="hist-clear-btn" (click)="clearDrillDown()">✕ Clear</button>
+            }
+          </div>
+          <div class="hist-chart-canvas-wrap">
+            <canvas #dailyChartCanvas></canvas>
+          </div>
+        </div>
+        <div class="hist-chart-panel">
+          <div class="hist-chart-title">
+            Top 10 Affected Routes
+            @if (histFilteredRoute) {
+              <button class="hist-clear-btn" (click)="clearRouteFilter()">✕ Clear</button>
+            }
+          </div>
+          <div class="hist-chart-canvas-wrap">
+            <canvas #routeChartCanvas></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="hist-table-header">
+        <span class="hist-table-title">
+          @if (histDrillDate) { Incidents on {{ histDrillDate }} }
+          @else if (histFilteredRoute) { Incidents for Route {{ histFilteredRoute }} }
+          @else { All Incidents }
+        </span>
+        <span class="hist-table-count">({{ visibleIncidents.length }})</span>
+      </div>
+
+      @if (visibleIncidents.length > 0) {
+        <div class="hist-table-wrap">
+          <table class="hist-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Routes</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (inc of visibleIncidents; track inc.incidentId) {
+                <tr [class.row-highlight]="histFilteredRoute && inc.routes.includes(histFilteredRoute)">
+                  <td class="hist-td-date">{{ inc.firstSeen | date:'MM/dd HH:mm' }}</td>
+                  <td>
+                    <div class="hist-route-chips">
+                      @for (r of inc.routes; track r) {
+                        <span class="hist-route-chip" [style.background]="getRouteColor(r)">{{ r }}</span>
+                      }
+                    </div>
+                  </td>
+                  <td>
+                    <span class="hist-type-badge" [style.background]="getTypeColor(inc.type)">{{ inc.type }}</span>
+                  </td>
+                  <td class="hist-td-desc">{{ inc.description }}</td>
+                  <td class="hist-td-dur">{{ formatDuration(inc.durationMinutes) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <div class="empty" style="padding: 16px 0;">No incidents match the current filter.</div>
+      }
+    }
+  </section>
 </div>

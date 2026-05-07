@@ -2,6 +2,7 @@ import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild } from '@ang
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
+import Chart from 'chart.js/auto';
 
 // Use require() for both leaflet and markercluster so they resolve to the same CJS
 // module instance. Angular's esbuild builder resolves `import * as L from 'leaflet'`
@@ -18,6 +19,14 @@ const BUS_ROUTE_PALETTE = [
   '#F56565', '#38B2AC', '#ED64A6', '#ECC94B',
   '#667EEA', '#FC8181', '#68D391', '#F6AD55',
 ];
+
+const HIST_TYPE_COLORS: Record<string, string> = {
+  Alert:      '#F59E0B',
+  Delay:      '#F56565',
+  Planned:    '#68D391',
+  Special:    '#9F7AEA',
+  Suspension: '#4299E1',
+};
 
 function getBusRouteColor(routeId: string): string {
   let hash = 0;
@@ -56,6 +65,42 @@ function createBusDivMarker(
   return L.marker([lat, lon], { icon });
 }
 
+// ── Historical data interfaces ────────────────────────────────────────────────
+
+interface HistSummary {
+  total: number;
+  mostAffectedRoute: string | null;
+  mostCommonType: string | null;
+  avgDaily: number;
+}
+
+interface HistDailyEntry {
+  date: string;
+  types: Record<string, number>;
+}
+
+interface HistRouteEntry {
+  route: string;
+  count: number;
+}
+
+interface HistIncident {
+  incidentId: string;
+  description: string;
+  type: string;
+  routes: string[];
+  firstSeen: string;
+  lastSeen: string;
+  durationMinutes: number;
+}
+
+interface HistData {
+  dailyByType: HistDailyEntry[];
+  topRoutes: HistRouteEntry[];
+  incidents: HistIncident[];
+  summary: HistSummary;
+}
+
 @Component({
   selector: 'app-bus-map',
   standalone: true,
@@ -64,7 +109,9 @@ function createBusDivMarker(
   styleUrl: './bus-map.component.scss',
 })
 export class BusMapComponent implements AfterViewInit, OnDestroy {
-  @ViewChild('mapContainer') mapContainer!: ElementRef<HTMLDivElement>;
+  @ViewChild('mapContainer')    mapContainer!:    ElementRef<HTMLDivElement>;
+  @ViewChild('dailyChartCanvas') dailyChartCanvas!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('routeChartCanvas') routeChartCanvas!: ElementRef<HTMLCanvasElement>;
 
   loading = true;
   error = '';
@@ -72,6 +119,17 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
   searchInput = '';
   searchedRouteId: string | null = null;
   highlightedIncidentId: string | null = null;
+
+  // ── Historical section state ─────────────────────────────────────────────
+  histPreset: '24h' | '7d' | '30d' | 'custom' = '7d';
+  histDateFrom = '';
+  histDateTo = '';
+  histRouteFilter = '';
+  histLoading = false;
+  histError = '';
+  histData: HistData | null = null;
+  histDrillDate: string | null = null;
+  histFilteredRoute: string | null = null;
 
   private map!: L.Map;
 
@@ -97,17 +155,23 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+  private dailyChart: Chart | null = null;
+  private routeChart: Chart | null = null;
+
   constructor(private wmata: WmataService) {}
 
   ngAfterViewInit(): void {
     this.initMap();
     this.fetchAndRender();
     this.refreshTimer = setInterval(() => this.fetchAndRefreshDynamic(), 30_000);
+    this.fetchHistory();
   }
 
   ngOnDestroy(): void {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.map) this.map.remove();
+    this.dailyChart?.destroy();
+    this.routeChart?.destroy();
   }
 
   // ── Map init ────────────────────────────────────────────────────────────────
@@ -468,5 +532,214 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
     return (this.busData?.incidents || []).find(
       (i: any) => (i.RoutesAffected || []).includes(routeId)
     ) ?? null;
+  }
+
+  // ── Historical section ───────────────────────────────────────────────────────
+
+  setHistPreset(preset: '24h' | '7d' | '30d' | 'custom'): void {
+    this.histPreset = preset;
+    if (preset !== 'custom') this.fetchHistory();
+  }
+
+  applyCustomRange(): void {
+    if (this.histDateFrom && this.histDateTo) this.fetchHistory();
+  }
+
+  fetchHistory(): void {
+    const now = new Date();
+    let startISO: string, endISO: string;
+
+    if (this.histPreset === 'custom') {
+      if (!this.histDateFrom || !this.histDateTo) return;
+      startISO = new Date(this.histDateFrom + 'T00:00:00').toISOString();
+      endISO   = new Date(this.histDateTo   + 'T23:59:59.999').toISOString();
+    } else {
+      const from = new Date(now);
+      if (this.histPreset === '24h')      from.setDate(now.getDate() - 1);
+      else if (this.histPreset === '7d')  from.setDate(now.getDate() - 7);
+      else                                from.setDate(now.getDate() - 30);
+      startISO = from.toISOString();
+      endISO   = now.toISOString();
+    }
+
+    this.histLoading = true;
+    this.histError   = '';
+    this.histData    = null;
+    this.histDrillDate     = null;
+    this.histFilteredRoute = null;
+    this.destroyCharts();
+
+    this.wmata.getBusIncidentHistory(startISO, endISO, this.histRouteFilter || undefined)
+      .subscribe({
+        next: (data: HistData) => {
+          this.histData    = data;
+          this.histLoading = false;
+          setTimeout(() => this.renderCharts(), 0);
+        },
+        error: (err: any) => {
+          this.histLoading = false;
+          this.histError   = 'Failed to load historical incident data.';
+          console.error('[bus-map hist]', err);
+        },
+      });
+  }
+
+  onRouteBarClick(route: string): void {
+    this.histFilteredRoute = this.histFilteredRoute === route ? null : route;
+    this.histDrillDate = null;
+
+    if (this.histFilteredRoute) {
+      this.mapContainer.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      this.fitMapToRoute(this.histFilteredRoute);
+    }
+
+    // Update bar colors without full chart recreate
+    if (this.routeChart && this.histData) {
+      const ds = this.routeChart.data.datasets[0] as any;
+      ds.backgroundColor = this.histData.topRoutes.map(r =>
+        r.route === this.histFilteredRoute ? '#89b4fa' : '#4299E1'
+      );
+      this.routeChart.update();
+    }
+  }
+
+  clearDrillDown(): void {
+    this.histDrillDate = null;
+  }
+
+  clearRouteFilter(): void {
+    this.histFilteredRoute = null;
+    if (this.routeChart && this.histData) {
+      const ds = this.routeChart.data.datasets[0] as any;
+      ds.backgroundColor = '#4299E1';
+      this.routeChart.update();
+    }
+  }
+
+  getRouteColor(routeId: string): string {
+    return getBusRouteColor(routeId);
+  }
+
+  getTypeColor(type: string): string {
+    return HIST_TYPE_COLORS[type] || '#45475a';
+  }
+
+  get visibleIncidents(): HistIncident[] {
+    if (!this.histData) return [];
+    let incs = this.histData.incidents;
+    if (this.histDrillDate) {
+      incs = incs.filter(i => i.firstSeen.startsWith(this.histDrillDate!));
+    }
+    if (this.histFilteredRoute) {
+      incs = incs.filter(i => i.routes.includes(this.histFilteredRoute!));
+    }
+    return incs;
+  }
+
+  formatDuration(minutes: number): string {
+    if (minutes === 0) return '< 1 min';
+    if (minutes < 60) return `${minutes}m`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${h}h ${m}m` : `${h}h`;
+  }
+
+  private fitMapToRoute(routeId: string): void {
+    const shapes = this.busData?.routeShapes?.[routeId];
+    if (!shapes) return;
+    const all: L.LatLngExpression[] = [];
+    for (const coords of [shapes.shape0, shapes.shape1] as [number, number][][]) {
+      if (coords?.length) all.push(...(coords as L.LatLngExpression[]));
+    }
+    if (all.length) this.map.fitBounds(L.latLngBounds(all), { padding: [40, 40] });
+  }
+
+  private destroyCharts(): void {
+    this.dailyChart?.destroy(); this.dailyChart = null;
+    this.routeChart?.destroy(); this.routeChart = null;
+  }
+
+  private renderCharts(): void {
+    if (!this.histData || !this.dailyChartCanvas?.nativeElement || !this.routeChartCanvas?.nativeElement) return;
+    this.destroyCharts();
+
+    const { dailyByType, topRoutes } = this.histData;
+    const dates    = dailyByType.map(d => d.date);
+    const allTypes = [...new Set(dailyByType.flatMap(d => Object.keys(d.types)))];
+
+    const dailyDatasets = allTypes.map((type, i) => ({
+      label: type,
+      data: dailyByType.map(d => d.types[type] || 0),
+      backgroundColor: HIST_TYPE_COLORS[type] || BUS_ROUTE_PALETTE[i % BUS_ROUTE_PALETTE.length],
+      stack: 'stack',
+      borderRadius: 2,
+    }));
+
+    this.dailyChart = new Chart(this.dailyChartCanvas.nativeElement, {
+      type: 'bar',
+      data: { labels: dates, datasets: dailyDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#a6adc8', font: { size: 11 }, boxWidth: 12 } },
+        },
+        scales: {
+          x: {
+            stacked: true,
+            ticks: { color: '#6c7086', maxRotation: 45, font: { size: 10 } },
+            grid:  { color: 'rgba(69,71,90,0.4)' },
+          },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            ticks: { color: '#6c7086', font: { size: 10 } },
+            grid:  { color: 'rgba(69,71,90,0.4)' },
+          },
+        },
+        onClick: (_: any, elements: any[]) => {
+          if (!elements.length) return;
+          const date = dates[elements[0].index];
+          this.histDrillDate     = this.histDrillDate === date ? null : date;
+          this.histFilteredRoute = null;
+        },
+      },
+    } as any);
+
+    this.routeChart = new Chart(this.routeChartCanvas.nativeElement, {
+      type: 'bar',
+      data: {
+        labels: topRoutes.map(r => r.route),
+        datasets: [{
+          label: 'Incidents',
+          data: topRoutes.map(r => r.count),
+          backgroundColor: topRoutes.map(r =>
+            r.route === this.histFilteredRoute ? '#89b4fa' : '#4299E1'
+          ),
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { color: '#6c7086', font: { size: 10 } },
+            grid:  { color: 'rgba(69,71,90,0.4)' },
+          },
+          y: {
+            ticks: { color: '#cdd6f4', font: { size: 11 } },
+            grid:  { display: false },
+          },
+        },
+        onClick: (_: any, elements: any[]) => {
+          if (!elements.length) return;
+          this.onRouteBarClick(topRoutes[elements[0].index].route);
+        },
+      },
+    } as any);
   }
 }
