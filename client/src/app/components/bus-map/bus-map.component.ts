@@ -1,4 +1,4 @@
-import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild } from '@angular/core';
+import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
@@ -138,7 +138,7 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
   private stopLayer = L.layerGroup();
 
   // Dynamic layers — cleared and rebuilt on each refresh
-  private busCluster!: InstanceType<typeof L.MarkerClusterGroup>;
+  private busCluster!: any;
   private incidentHighlightLayer = L.layerGroup();
 
   // Search highlight — not in layer control, cleared on new search or clear
@@ -158,7 +158,7 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
   private dailyChart: Chart | null = null;
   private routeChart: Chart | null = null;
 
-  constructor(private wmata: WmataService) {}
+  constructor(private wmata: WmataService, private cdr: ChangeDetectorRef) {}
 
   ngAfterViewInit(): void {
     this.initMap();
@@ -186,12 +186,12 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
     }).addTo(this.map);
 
     // Bus cluster group — handles clustering at low zoom levels
-    this.busCluster = L.markerClusterGroup({
+    this.busCluster = (L as any).markerClusterGroup({
       chunkedLoading: true,
       maxClusterRadius: 60,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      iconCreateFunction: (cluster) => {
+      iconCreateFunction: (cluster: any) => {
         const n = cluster.getChildCount();
         const size = n < 10 ? 30 : n < 50 ? 36 : 44;
         return L.divIcon({
@@ -574,7 +574,8 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
         next: (data: HistData) => {
           this.histData    = data;
           this.histLoading = false;
-          setTimeout(() => this.renderCharts(), 0);
+          this.cdr.detectChanges(); // flush @if so canvas elements exist before renderCharts reads them
+          this.renderCharts();
         },
         error: (err: any) => {
           this.histLoading = false;

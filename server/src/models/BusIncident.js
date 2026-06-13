@@ -9,7 +9,6 @@ const busIncidentSchema = new mongoose.Schema({
   DateUpdated: String,
 });
 
-// TTL: expire after 24 hours
-busIncidentSchema.index({ snapshotAt: 1 }, { expireAfterSeconds: 86400 });
+busIncidentSchema.index({ snapshotAt: 1 });
 
 module.exports = mongoose.model('BusIncident', busIncidentSchema);
