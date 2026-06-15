@@ -409,6 +409,8 @@
   overflow-x: auto;
   border-radius: 6px;
   border: 1px solid #313244;
+  max-height: 400px; /* Set desired height */
+  overflow-y: auto;  /* Enables vertical scrolling */
 }
 
 .hist-table {
@@ -434,6 +436,12 @@
     border-bottom: 1px solid rgba(49, 50, 68, 0.5);
     color: #a6adc8;
     vertical-align: top;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
   }
 
   tr:last-child td { border-bottom: none; }
