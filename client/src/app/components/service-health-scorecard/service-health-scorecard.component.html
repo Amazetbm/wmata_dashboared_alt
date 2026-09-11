@@ -1,0 +1,39 @@
+<div class="panel">
+  <div class="panel-header">
+    <h2>Service Health</h2>
+    <span class="last-updated" *ngIf="lastUpdated">Updated {{ secondsAgo() }}s ago</span>
+  </div>
+
+  <div *ngIf="loading" class="loading">Loading...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <div *ngIf="!loading && !error" class="scorecard-row">
+    <div
+      *ngFor="let line of lineScores"
+      class="line-card"
+      [class.status-good]="line.status === 'good'"
+      [class.status-minor]="line.status === 'minor'"
+      [class.status-degraded]="line.status === 'degraded'"
+      [style.border-left-color]="line.color"
+    >
+      <div class="card-header">
+        <span class="status-dot" [class]="'dot-' + line.status"></span>
+        <span class="line-name">{{ line.lineName }}</span>
+      </div>
+
+      <div class="adherence-pct" [class.no-data]="line.noData">
+        {{ line.noData ? '—' : line.adherencePct + '%' }}
+      </div>
+      <div class="adherence-label">on-time</div>
+
+      <div class="metrics">
+        <span class="metric" [class.metric-warn]="line.incidentCount > 0">
+          {{ line.incidentCount }} inc
+        </span>
+        <span class="metric" [class.metric-warn]="line.outageCount > 0">
+          {{ line.outageCount }} out
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
