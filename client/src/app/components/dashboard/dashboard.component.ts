@@ -7,6 +7,7 @@ import { HistoricalViewComponent } from '../historical-view/historical-view.comp
 import { AdherencePanelComponent } from '../adherence-panel/adherence-panel.component';
 import { OutagePanelComponent } from '../outage-panel/outage-panel.component';
 import { MapPanelComponent } from '../map-panel/map-panel.component';
+import { ServiceHealthScorecardComponent } from '../service-health-scorecard/service-health-scorecard.component';
 
 @Component({
   selector: 'app-dashboard',
@@ -20,6 +21,7 @@ import { MapPanelComponent } from '../map-panel/map-panel.component';
     HistoricalViewComponent,
     AdherencePanelComponent,
     OutagePanelComponent,
+    ServiceHealthScorecardComponent,
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss'
