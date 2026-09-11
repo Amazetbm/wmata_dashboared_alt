@@ -20,7 +20,8 @@ async function fetchRouteDetail(routeId) {
     };
     routeDetailCache.set(routeId, entry);
     return entry;
-  } catch {
+  } catch (err) {
+    console.error(`[bus/shapes] fetchRouteDetail(${routeId}) failed:`, err.message);
     return null;
   }
 }
@@ -41,8 +42,16 @@ router.get('/map', async (req, res) => {
     const stops     = stopsRes.status === 'fulfilled' ? (stopsRes.value.data.Stops || []) : [];
     const incidents = incRes.status === 'fulfilled' ? (incRes.value.data.BusIncidents || []) : [];
 
-    // Fetch shapes only for routes that currently have active buses (lazy + cached)
-    const activeRouteIds = [...new Set(positions.map(p => p.RouteID).filter(Boolean))];
+    // Fetch shapes for the top 20 routes by active bus count (lazy + cached).
+    // Capping at 20 prevents rate-limit failures when 100–200 routes fire in parallel.
+    const routeBusCounts = {};
+    for (const p of positions) {
+      if (p.RouteID) routeBusCounts[p.RouteID] = (routeBusCounts[p.RouteID] || 0) + 1;
+    }
+    const activeRouteIds = Object.entries(routeBusCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([id]) => id);
     const detailResults = await Promise.allSettled(activeRouteIds.map(id => fetchRouteDetail(id)));
 
     const routeShapes = {};
