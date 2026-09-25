@@ -1,0 +1,35 @@
+[
+  {
+    "UnitName": "A01X01",
+    "UnitType": "ELEVATOR",
+    "StationCode": "A01",
+    "StationName": "Metro Center",
+    "LocationDescription": "Mezzanine to Platform",
+    "SymptomDescription": "Door problem",
+    "TimeOutOfService": "2026-09-24T08:00:00",
+    "EstimatedReturnToService": "2026-09-24T16:00:00",
+    "DateUpdated": "2026-09-24T10:00:00"
+  },
+  {
+    "UnitName": "C01E01",
+    "UnitType": "ESCALATOR",
+    "StationCode": "C01",
+    "StationName": "Judiciary Square",
+    "LocationDescription": "Street to Mezzanine",
+    "SymptomDescription": "Motor issue",
+    "TimeOutOfService": "2026-09-23T14:00:00",
+    "EstimatedReturnToService": null,
+    "DateUpdated": "2026-09-24T09:00:00"
+  },
+  {
+    "UnitName": "A01E01",
+    "UnitType": "ESCALATOR",
+    "StationCode": "A01",
+    "StationName": "Metro Center",
+    "LocationDescription": "Street to Mezzanine (13th St)",
+    "SymptomDescription": "Broken step",
+    "TimeOutOfService": "2026-09-24T06:00:00",
+    "EstimatedReturnToService": "2026-09-25T08:00:00",
+    "DateUpdated": "2026-09-24T07:00:00"
+  }
+]

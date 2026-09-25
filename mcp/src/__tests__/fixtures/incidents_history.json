@@ -1,0 +1,44 @@
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "snapshotAt": "2026-09-24T12:00:00.000Z",
+    "IncidentID": "INC001",
+    "Description": "Delays on Red Line due to track maintenance",
+    "StartLocationFullName": "Metro Center",
+    "EndLocationFullName": "Shady Grove",
+    "PassengerDelay": 10,
+    "DelaySeverity": null,
+    "IncidentType": "Delay",
+    "EmergencyText": null,
+    "LinesAffected": "RD;",
+    "DateUpdated": "2026-09-24T11:30:00"
+  },
+  {
+    "_id": "507f1f77bcf86cd799439012",
+    "snapshotAt": "2026-09-24T12:30:00.000Z",
+    "IncidentID": "INC001",
+    "Description": "Delays on Red Line due to track maintenance",
+    "StartLocationFullName": "Metro Center",
+    "EndLocationFullName": "Shady Grove",
+    "PassengerDelay": 10,
+    "DelaySeverity": null,
+    "IncidentType": "Delay",
+    "EmergencyText": null,
+    "LinesAffected": "RD;",
+    "DateUpdated": "2026-09-24T11:30:00"
+  },
+  {
+    "_id": "507f1f77bcf86cd799439013",
+    "snapshotAt": "2026-09-24T12:00:00.000Z",
+    "IncidentID": "INC002",
+    "Description": "Single tracking on Blue and Orange Lines",
+    "StartLocationFullName": "Rosslyn",
+    "EndLocationFullName": "Foggy Bottom",
+    "PassengerDelay": 5,
+    "DelaySeverity": null,
+    "IncidentType": "Alert",
+    "EmergencyText": null,
+    "LinesAffected": "BL;OR;",
+    "DateUpdated": "2026-09-24T10:00:00"
+  }
+]

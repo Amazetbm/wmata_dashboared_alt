@@ -41,6 +41,22 @@ services:
     networks:
       - wmata
 
+  # ── MCP Server ────────────────────────────────────────────────────────────────
+  mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    networks:
+      - wmata
+
   # ── Angular (Nginx) ───────────────────────────────────────────────────────────
   client:
     build:

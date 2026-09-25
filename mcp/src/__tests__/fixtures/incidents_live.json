@@ -1,0 +1,28 @@
+{
+  "Incidents": [
+    {
+      "IncidentID": "INC001",
+      "Description": "Delays on Red Line due to track maintenance between Metro Center and Farragut North.",
+      "StartLocationFullName": "Metro Center",
+      "EndLocationFullName": "Farragut North",
+      "PassengerDelay": 10,
+      "DelaySeverity": null,
+      "IncidentType": "Delay",
+      "EmergencyText": null,
+      "LinesAffected": "RD;",
+      "DateUpdated": "2026-09-24T11:30:00"
+    },
+    {
+      "IncidentID": "INC002",
+      "Description": "Single tracking on Blue and Orange Lines near Rosslyn.",
+      "StartLocationFullName": "Rosslyn",
+      "EndLocationFullName": "Foggy Bottom",
+      "PassengerDelay": 5,
+      "DelaySeverity": null,
+      "IncidentType": "Alert",
+      "EmergencyText": null,
+      "LinesAffected": "BL;OR;",
+      "DateUpdated": "2026-09-24T10:00:00"
+    }
+  ]
+}

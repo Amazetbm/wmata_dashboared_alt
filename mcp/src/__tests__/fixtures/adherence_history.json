@@ -1,0 +1,16 @@
+[
+  {
+    "snapshotAt": "2026-09-24T12:00:00.000Z",
+    "summary": { "total": 50, "onTime": 40, "minor": 7, "significant": 3 },
+    "lineSummaries": [
+      { "lineCode": "RD", "total": 20, "onTime": 16, "minor": 3, "significant": 1 }
+    ]
+  },
+  {
+    "snapshotAt": "2026-09-24T12:30:00.000Z",
+    "summary": { "total": 48, "onTime": 38, "minor": 8, "significant": 2 },
+    "lineSummaries": [
+      { "lineCode": "RD", "total": 19, "onTime": 15, "minor": 3, "significant": 1 }
+    ]
+  }
+]

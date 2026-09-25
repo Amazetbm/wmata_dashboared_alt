@@ -1,0 +1,47 @@
+{
+  "snapshotAt": "2026-09-24T12:00:00.000Z",
+  "summary": { "total": 50, "onTime": 40, "minor": 7, "significant": 3 },
+  "lineSummaries": [
+    { "lineCode": "RD", "total": 20, "onTime": 16, "minor": 3, "significant": 1 },
+    { "lineCode": "BL", "total": 15, "onTime": 12, "minor": 2, "significant": 1 },
+    { "lineCode": "OR", "total": 15, "onTime": 12, "minor": 2, "significant": 1 }
+  ],
+  "trains": [
+    {
+      "trainId": "T123",
+      "trainNumber": "101",
+      "lineCode": "RD",
+      "directionNum": 1,
+      "circuitId": 1234,
+      "currentSeq": 10,
+      "expectedSeq": 10,
+      "deviation": 0,
+      "status": "on-time",
+      "carCount": 8
+    },
+    {
+      "trainId": "T124",
+      "trainNumber": "102",
+      "lineCode": "RD",
+      "directionNum": 2,
+      "circuitId": 5678,
+      "currentSeq": 25,
+      "expectedSeq": 23,
+      "deviation": 2,
+      "status": "minor",
+      "carCount": 6
+    },
+    {
+      "trainId": "T200",
+      "trainNumber": "201",
+      "lineCode": "BL",
+      "directionNum": 1,
+      "circuitId": 9999,
+      "currentSeq": 5,
+      "expectedSeq": 5,
+      "deviation": 0,
+      "status": "on-time",
+      "carCount": 8
+    }
+  ]
+}
