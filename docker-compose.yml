@@ -27,6 +27,13 @@ services:
       MONGODB_URI: ${MONGODB_URI}
       WMATA_API_KEY: ${WMATA_API_KEY}
       PORT: ${PORT:-3000}
+      ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-30000}
     ports:
       - "3000:3000"
     depends_on:

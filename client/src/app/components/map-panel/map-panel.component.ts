@@ -1,6 +1,8 @@
-import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild } from '@angular/core';
+import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { WmataService } from '../../services/wmata.service';
+import { MapCommandService } from '../../services/map-command.service';
 
 const LINE_COLORS: Record<string, string> = {
   RD: '#E32726',
@@ -51,13 +53,26 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
 
   private cachedData: any = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private stationMarkerIndex = new Map<string, L.CircleMarker>();
 
-  constructor(private wmata: WmataService) {}
+  private readonly destroyRef = inject(DestroyRef);
+
+  constructor(
+    private wmata: WmataService,
+    private mapCommandService: MapCommandService,
+  ) {}
 
   ngAfterViewInit(): void {
     this.initMap();
     this.fetchAndRender();
     this.refreshTimer = setInterval(() => this.fetchAndRefreshDynamic(), 30_000);
+
+    this.mapCommandService.stream$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(action => {
+        if (action.action === 'focus_line')    this.selectLine(action.target);
+        if (action.action === 'focus_station') this.panToStation(action.target);
+      });
   }
 
   ngOnDestroy(): void {
@@ -127,6 +142,17 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
     if (this.cachedData) this.rebuildAll();
   }
 
+  panToStation(stationCode: string): void {
+    if (!this.cachedData?.stations || !this.map) return;
+    const station = (this.cachedData.stations as any[]).find(
+      s => s.code === stationCode.toUpperCase()
+    );
+    if (!station) return;
+    this.map.setView([station.lat, station.lon], 14, { animate: true });
+    const marker = this.stationMarkerIndex.get(stationCode.toUpperCase());
+    if (marker) marker.openPopup();
+  }
+
   private rebuildAll(): void {
     this.rebuildPolylines();
     this.rebuildStations();
@@ -156,6 +182,7 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
 
   private rebuildStations(): void {
     this.stationLayer.clearLayers();
+    this.stationMarkerIndex.clear();
     const { stations } = this.cachedData;
 
     for (const station of stations as any[]) {
@@ -181,6 +208,7 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
       );
 
       marker.addTo(this.stationLayer);
+      this.stationMarkerIndex.set(station.code, marker);
     }
   }
 

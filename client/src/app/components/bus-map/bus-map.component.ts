@@ -1,7 +1,9 @@
-import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
+import { Component, AfterViewInit, OnDestroy, ElementRef, ViewChild, ChangeDetectorRef, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
+import { MapCommandService } from '../../services/map-command.service';
 import Chart from 'chart.js/auto';
 
 // Use require() for both leaflet and markercluster so they resolve to the same CJS
@@ -158,13 +160,35 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
   private dailyChart: Chart | null = null;
   private routeChart: Chart | null = null;
 
-  constructor(private wmata: WmataService, private cdr: ChangeDetectorRef) {}
+  private readonly destroyRef = inject(DestroyRef);
+
+  constructor(
+    private wmata: WmataService,
+    private cdr: ChangeDetectorRef,
+    private mapCommandService: MapCommandService,
+  ) {}
 
   ngAfterViewInit(): void {
     this.initMap();
     this.fetchAndRender();
     this.refreshTimer = setInterval(() => this.fetchAndRefreshDynamic(), 30_000);
     this.fetchHistory();
+
+    // Drain any map action that arrived before this lazy chunk loaded
+    const pending = this.mapCommandService.drainPendingBusAction();
+    if (pending?.action === 'focus_route') {
+      if (this.busData) this.applyRouteSearch(pending.target);
+      else this.mapCommandService.setPendingBusAction(pending);
+    }
+
+    this.mapCommandService.stream$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(action => {
+        if (action.action === 'focus_route') {
+          if (this.busData) this.applyRouteSearch(action.target);
+          else this.mapCommandService.setPendingBusAction(action);
+        }
+      });
   }
 
   ngOnDestroy(): void {
@@ -477,7 +501,7 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
     if (this.busData) this.rebuildBuses();
   }
 
-  private applyRouteSearch(routeId: string): void {
+  applyRouteSearch(routeId: string): void {
     this.searchedRouteId = routeId;
     this.searchHighlightLayer.clearLayers();
 

@@ -11,8 +11,10 @@ const adherenceRoutes = require('./routes/adherence');
 const outageRoutes    = require('./routes/outages');
 const mapRoutes       = require('./routes/map');
 const busRoutes       = require('./routes/bus');
+const assistantRoutes = require('./routes/assistant');
 
 const app = express();
+app.set('trust proxy', 1); // trust X-Real-IP from nginx for rate limiting
 app.use(cors());
 app.use(express.json());
 
@@ -25,7 +27,8 @@ app.use('/api/predictions', predictionRoutes);
 app.use('/api/adherence', adherenceRoutes);
 app.use('/api/outages',  outageRoutes);
 app.use('/api/map',     mapRoutes);
-app.use('/api/bus',     busRoutes);
+app.use('/api/bus',       busRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
