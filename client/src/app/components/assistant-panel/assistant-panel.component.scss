@@ -145,6 +145,31 @@
   padding: 10px 14px;
   white-space: pre-wrap;
   word-break: break-word;
+
+  &.markdown {
+    white-space: normal;
+
+    p  { margin: 0 0 8px; &:last-child { margin-bottom: 0; } }
+    h1, h2, h3, h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #cdd6f4;
+      margin: 10px 0 4px;
+      &:first-child { margin-top: 0; }
+    }
+    ul, ol { margin: 4px 0 8px; padding-left: 20px; }
+    li { margin-bottom: 2px; }
+    strong { font-weight: 700; color: #cdd6f4; }
+    em { font-style: italic; color: #a6adc8; }
+    code {
+      font-family: 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+      background: rgba(137, 180, 250, 0.1);
+      border-radius: 3px;
+      padding: 1px 4px;
+    }
+    hr { border: none; border-top: 1px solid #313244; margin: 8px 0; }
+  }
 }
 
 .tools-used {

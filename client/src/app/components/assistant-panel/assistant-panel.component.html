@@ -21,7 +21,11 @@
 
       @for (msg of messages(); track $index) {
         <div class="message" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
-          <div class="message-text">{{ msg.text }}</div>
+          @if (msg.role === 'assistant') {
+            <div class="message-text markdown" [innerHTML]="renderMarkdown(msg.text)"></div>
+          } @else {
+            <div class="message-text">{{ msg.text }}</div>
+          }
           @if (msg.toolsUsed && msg.toolsUsed.length > 0) {
             <div class="tools-used">
               @for (tool of msg.toolsUsed; track tool) {

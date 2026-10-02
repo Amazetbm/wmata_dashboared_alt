@@ -78,8 +78,15 @@ async function runAgentLoop(question, history, adapter, toolDefs, config, now = 
 
     if (response.stop) {
       const replyBlock = response.message.content.find(c => c.type === 'text');
+      const rawReply = replyBlock?.text ?? '(No response)';
+      // Some models (e.g. qwen3 via Ollama) emit show_on_map as XML text instead of
+      // a tool call. Extract and strip them so they don't appear in the reply.
+      const cleanReply = rawReply.replace(
+        /<show_on_map\s+action="([^"]+)"\s+target="([^"]+)"\s*\/?>/g,
+        (_, action, target) => { mapActions.push({ action, target }); return ''; }
+      ).trim();
       return {
-        reply:       replyBlock?.text ?? '(No response)',
+        reply:       cleanReply,
         tools_used:  toolsUsed,
         map_actions: mapActions,
       };

@@ -1,5 +1,7 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
 import { AssistantService, ChatMessage, ChatResponse } from '../../services/assistant.service';
 import { MapCommandService, MapAction } from '../../services/map-command.service';
 
@@ -30,6 +32,7 @@ export class AssistantPanelComponent implements OnInit, OnDestroy, AfterViewChec
 
   private readonly assistantService = inject(AssistantService);
   private readonly mapCommandService = inject(MapCommandService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly panelOpen = this.assistantService.panelOpen;
 
@@ -105,6 +108,11 @@ export class AssistantPanelComponent implements OnInit, OnDestroy, AfterViewChec
 
   close(): void {
     this.assistantService.closePanel();
+  }
+
+  renderMarkdown(text: string): SafeHtml {
+    const html = marked.parse(text, { async: false }) as string;
+    return this.sanitizer.bypassSecurityTrustHtml(html);
   }
 
   private scrollToBottom(): void {
