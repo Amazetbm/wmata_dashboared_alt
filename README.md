@@ -15,6 +15,8 @@ Two top-level views are served as separate Angular routes, accessible from the p
 | `/rail` | Rail Dashboard — all rail panels |
 | `/bus` | Bus Map — full-page live bus network map |
 
+An **Ask the Dashboard** button in the nav bar opens the AI assistant panel (see below). The button is hidden automatically when the assistant is not configured.
+
 ---
 
 ### Rail Dashboard (`/rail`)
@@ -77,6 +79,59 @@ Full-page Leaflet map of the live WMATA bus network, lazily loaded as a separate
 
 ---
 
+### Ask the Dashboard (AI Assistant)
+
+A slide-out chat panel that lets operators ask plain-English questions about live and historical WMATA data and receive answers from a large language model.
+
+**How it works**
+1. The backend runs an agentic tool-calling loop (up to 5 iterations) against your configured LLM provider.
+2. The LLM selects from 7 read-only data tools to answer each question; tool calls run in parallel.
+3. The final answer is returned as rendered markdown in the panel.
+4. If the answer references a specific line, station, or bus route the map is updated automatically — no manual navigation required.
+
+**Available tools**
+
+| Tool | What it does |
+|---|---|
+| `find_station` | Fuzzy-match a station name to its WMATA code; required before `get_next_trains` |
+| `get_rail_incidents` | Live active incidents or historical aggregates |
+| `get_train_positions` | Most recent adherence snapshot, optionally filtered by line |
+| `get_next_trains` | Live next-arrival predictions for a station |
+| `get_elevator_outages` | Live outages or historical outage records with ADA-concern flagging |
+| `get_schedule_adherence` | Live, point-in-time snapshot, or multi-day historical summary |
+| `get_bus_incidents` | Historical bus incident aggregates by route |
+
+**Map integration**
+
+When the LLM references a specific line, station, or bus route it emits a `show_on_map` action. The Angular `MapCommandService` receives the action and drives the Leaflet map directly:
+
+| Action | Effect |
+|---|---|
+| `focus_line` | Selects and highlights the rail line |
+| `focus_station` | Pans the rail map to the station and opens its popup |
+| `focus_route` | Filters the bus map to that route |
+
+The bus map is a lazy-loaded chunk; any `focus_route` action that arrives before it finishes loading is queued and applied automatically once it is ready.
+
+**Provider support**
+
+The assistant is provider-agnostic. Configure any of the following via environment variables:
+
+| Provider | `LLM_PROVIDER` value |
+|---|---|
+| Anthropic (Claude) | `anthropic` |
+| OpenAI | `openai` |
+| Google Gemini | `gemini` |
+| Ollama / any OpenAI-compatible API | `openai-compatible` |
+
+Set `ASSISTANT_ENABLED=false` to disable the feature without removing the environment variables. The server always starts regardless of assistant configuration.
+
+**Rate limiting**
+
+`POST /api/assistant/chat` is rate-limited to 10 requests per minute per IP. The API key is never sent to the browser; `/api/assistant/config` returns only `{ enabled, provider, model }`.
+
+---
+
 ### Background Poller
 
 Every 30 seconds the server fetches rail incidents, train positions, elevator outages, bus positions, and bus incidents from the WMATA API and persists each as a timestamped snapshot in MongoDB. Schedule adherence is computed from live train positions each cycle and stored with pre-aggregated per-line summaries.
@@ -87,8 +142,8 @@ Every 30 seconds the server fetches rail incidents, train positions, elevator ou
 
 | Layer | Technology |
 |---|---|
-| Frontend | Angular 21 (standalone components), Chart.js, Leaflet, Leaflet.markercluster |
-| Backend | Node.js, Express |
+| Frontend | Angular 21 (standalone components), Chart.js, Leaflet, Leaflet.markercluster, marked |
+| Backend | Node.js, Express, express-rate-limit |
 | Database | MongoDB (Mongoose) |
 | Background jobs | node-cron |
 | Container | Docker + Docker Compose, Nginx |
@@ -100,6 +155,7 @@ Every 30 seconds the server fetches rail incidents, train positions, elevator ou
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (recommended)
 - OR Node.js 20+ and a running MongoDB instance for local dev
 - A WMATA API key — register free at [developer.wmata.com](https://developer.wmata.com)
+- *(Optional)* An LLM API key or a local [Ollama](https://ollama.com) instance for the AI assistant
 
 ---
 
@@ -112,7 +168,7 @@ cd wmta_dashboard
 
 # 2. Create the root .env file
 cp .env.example .env
-# Fill in WMATA_API_KEY and confirm MONGODB_URI
+# Fill in WMATA_API_KEY and (optionally) LLM_* variables
 
 # 3. Build and start all services
 docker compose up --build
@@ -150,16 +206,46 @@ App available at **http://localhost:4200**.
 
 ## Environment Variables
 
+### Required
+
 | Variable | Description | Default |
 |---|---|---|
 | `WMATA_API_KEY` | WMATA developer API key | — |
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/wmata_dashboard` |
 | `PORT` | Express listen port | `3000` |
 
-**Local dev:** set in `server/.env`  
+### AI Assistant (optional)
+
+| Variable | Description | Default |
+|---|---|---|
+| `LLM_PROVIDER` | `anthropic`, `openai`, `gemini`, or `openai-compatible` | — |
+| `LLM_MODEL` | Model name (e.g. `claude-sonnet-4-6`, `gpt-4o`, `qwen3:8b`) | — |
+| `LLM_API_KEY` | API key for the chosen provider; leave blank for local servers | — |
+| `LLM_BASE_URL` | Base URL override; required for `openai-compatible` (e.g. `http://localhost:11434`) | — |
+| `LLM_MAX_TOKENS` | Maximum tokens in the LLM response | `1024` |
+| `LLM_TIMEOUT_MS` | Per-request LLM timeout in milliseconds | `30000` |
+| `ASSISTANT_ENABLED` | Set to `false` to explicitly disable the assistant | enabled when `LLM_PROVIDER` + `LLM_MODEL` are set |
+
+**Example — Ollama (local):**
+```env
+LLM_PROVIDER=openai-compatible
+LLM_MODEL=qwen3:8b
+LLM_BASE_URL=http://localhost:11434
+LLM_TIMEOUT_MS=60000
+```
+
+**Example — Anthropic:**
+```env
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-sonnet-4-6
+LLM_API_KEY=sk-ant-...
+```
+
+**Local dev:** set in `server/.env`
 **Docker:** set in `.env` at the project root (read by `docker-compose.yml`)
 
 > When running in Docker, `MONGODB_URI` must use the service name: `mongodb://mongo:27017/wmata_dashboard`
+> When running Ollama on the host machine with Docker, use `LLM_BASE_URL=http://host.docker.internal:11434`
 
 ---
 
@@ -209,6 +295,24 @@ wmta_dashboard/
 │       │   ├── AdherenceSnapshot.js
 │       │   ├── BusPosition.js        # TTL: 24 hours
 │       │   └── BusIncident.js        # TTL: 24 hours
+│       ├── assistant/
+│       │   ├── config.js             # LLM env var parsing; returns null if disabled
+│       │   ├── agentLoop.js          # Tool-calling loop (MAX_ITER=5)
+│       │   ├── tools.js              # TOOL_DEFINITIONS (8 tools incl. show_on_map)
+│       │   ├── providers/
+│       │   │   ├── anthropic.js
+│       │   │   ├── openai.js
+│       │   │   ├── gemini.js
+│       │   │   ├── openai-compatible.js
+│       │   │   └── index.js          # getAdapter(config) factory
+│       │   └── toolHandlers/
+│       │       ├── findStation.js
+│       │       ├── getRailIncidents.js
+│       │       ├── getTrainPositions.js
+│       │       ├── getNextTrains.js
+│       │       ├── getElevatorOutages.js
+│       │       ├── getScheduleAdherence.js
+│       │       └── getBusIncidents.js
 │       └── routes/
 │           ├── incidents.js          # /live + /history
 │           ├── trains.js             # /live + /history
@@ -217,26 +321,30 @@ wmta_dashboard/
 │           ├── adherence.js          # /live + /history + /snapshot
 │           ├── outages.js            # /live + /history (structured detail)
 │           ├── map.js                # /api/map: trains + stations + incidents + polylines
-│           └── bus.js                # /map + /history/positions + /history/incidents
+│           ├── bus.js                # /map + /history/positions + /history/incidents
+│           └── assistant.js          # GET /config + POST /chat (rate limited)
 └── client/
     ├── Dockerfile
-    ├── nginx.conf                    # try_files for SPA routing
+    ├── nginx.conf                    # SPA routing; 120 s proxy timeout; SSE headers
     ├── proxy.conf.json               # dev proxy: /api → :3000
     └── src/app/
         ├── app.routes.ts             # /rail (eager) + /bus (lazy-loaded chunk)
         ├── services/
-        │   └── wmata.service.ts      # all HTTP calls, relative /api base
+        │   ├── wmata.service.ts      # all HTTP calls, relative /api base
+        │   ├── assistant.service.ts  # panelOpen signal, getConfig(), chat()
+        │   └── map-command.service.ts# Subject<MapAction>; pending bus action slot
         └── components/
-            ├── nav-bar/              # RouterLink nav; active state via RouterLinkActive
+            ├── nav-bar/              # RouterLink nav; Ask Dashboard toggle button
             ├── dashboard/            # /rail grid shell
-            ├── map-panel/            # rail Leaflet map
+            ├── map-panel/            # rail Leaflet map; focus_line / focus_station handler
             ├── incidents-panel/
             ├── train-positions-panel/
             ├── station-monitor/
             ├── adherence-panel/      # live + self-contained historical with chart
             ├── outage-panel/
             ├── historical-view/      # incidents & elevator history with replay
-            └── bus-map/              # /bus lazy chunk: full-page bus Leaflet map
+            ├── bus-map/              # /bus lazy chunk; focus_route handler
+            └── assistant-panel/      # slide-out AI chat drawer
 ```
 
 ---
@@ -288,3 +396,10 @@ Each 30-second snapshot stores per-train detail plus pre-aggregated network and 
 | GET | `/api/bus/map` | Live positions, route list, stops, incidents, and route shapes for all active routes |
 | GET | `/api/bus/history/positions?from=&to=` | Historical bus position snapshots (max 5000) |
 | GET | `/api/bus/history/incidents?from=&to=` | Historical bus incident snapshots (max 5000) |
+
+### Assistant
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/assistant/config` | Returns `{ enabled, provider, model }` — no secrets |
+| POST | `/api/assistant/chat` | `{ question, history }` → `{ reply, tools_used, map_actions }` (10 req/min per IP) |
