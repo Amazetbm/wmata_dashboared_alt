@@ -40,7 +40,26 @@ router.get('/map', async (req, res) => {
     const positions = posRes.status === 'fulfilled' ? (posRes.value.data.BusPositions || []) : [];
     const routes    = routesRes.status === 'fulfilled' ? (routesRes.value.data.Routes || []) : [];
     const stops     = stopsRes.status === 'fulfilled' ? (stopsRes.value.data.Stops || []) : [];
-    const incidents = incRes.status === 'fulfilled' ? (incRes.value.data.BusIncidents || []) : [];
+
+    let incidentsSource = 'live';
+    let incidents = incRes.status === 'fulfilled' ? (incRes.value.data.BusIncidents || []) : [];
+
+    if (incidents.length === 0) {
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+      const recent = await BusIncident.find({ snapshotAt: { $gte: cutoff } })
+        .sort({ snapshotAt: -1 })
+        .limit(100)
+        .lean();
+      if (recent.length > 0) {
+        const seen = new Set();
+        incidents = recent.filter(r => {
+          if (seen.has(r.IncidentID)) return false;
+          seen.add(r.IncidentID);
+          return true;
+        });
+        incidentsSource = 'cached';
+      }
+    }
 
     // Fetch shapes for the top 20 routes by active bus count (lazy + cached).
     // Capping at 20 prevents rate-limit failures when 100–200 routes fire in parallel.
@@ -60,7 +79,7 @@ router.get('/map', async (req, res) => {
       if (r.status === 'fulfilled' && r.value) routeShapes[id] = r.value;
     });
 
-    res.json({ positions, routes, stops, incidents, routeShapes });
+    res.json({ positions, routes, stops, incidents, incidents_source: incidentsSource, routeShapes });
   } catch (err) {
     console.error('[bus/map]', err.message);
     res.status(502).json({ error: 'Failed to load bus map data' });
