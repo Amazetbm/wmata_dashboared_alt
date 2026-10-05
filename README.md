@@ -132,6 +132,39 @@ Set `ASSISTANT_ENABLED=false` to disable the feature without removing the enviro
 
 ---
 
+### MCP Server
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server exposing live WMATA data as tools for AI clients (Claude Code, Claude Desktop, MCP Inspector). Accessible at `/mcp` via the nginx reverse proxy.
+
+**Five tools:**
+
+| Tool | What it does |
+|---|---|
+| `next_arrivals` | Next-train arrival predictions for a station code |
+| `line_status` | Active rail incidents filtered by line |
+| `accessibility_status` | Active elevator and escalator outages |
+| `service_history` | Historical schedule-adherence summaries |
+| `live_trains` | Current train positions and adherence snapshot |
+
+**Security:** Every request requires `Authorization: Bearer <MCP_AUTH_TOKEN>`. The server refuses to start in HTTP mode without a token.
+
+**Connecting:**
+
+```bash
+# Claude Code
+claude mcp add --transport http wmata http://localhost:4200/mcp \
+  --header "Authorization: Bearer <token>"
+
+# MCP Inspector
+# URL: http://localhost:4200/mcp  — add Authorization header in the UI
+
+# Claude Desktop (claude_desktop_config.json)
+# "mcpServers": { "wmata": { "url": "http://localhost:4200/mcp",
+#   "headers": { "Authorization": "Bearer <token>" } } }
+```
+
+---
+
 ### Background Poller
 
 Every 30 seconds the server fetches rail incidents, train positions, elevator outages, bus positions, and bus incidents from the WMATA API and persists each as a timestamped snapshot in MongoDB. Schedule adherence is computed from live train positions each cycle and stored with pre-aggregated per-line summaries.
@@ -146,6 +179,7 @@ Every 30 seconds the server fetches rail incidents, train positions, elevator ou
 | Backend | Node.js, Express, express-rate-limit |
 | Database | MongoDB (Mongoose) |
 | Background jobs | node-cron |
+| MCP SDK | @modelcontextprotocol/sdk — Streamable HTTP transport |
 | Container | Docker + Docker Compose, Nginx |
 
 ---
@@ -202,6 +236,20 @@ node node_modules/@angular/cli/bin/ng.js serve
 
 App available at **http://localhost:4200**.
 
+### MCP Server
+
+```bash
+cd mcp
+npm install
+npm run build   # dist/ is gitignored — must build after clone
+
+# HTTP mode (requires token)
+MCP_AUTH_TOKEN=test node dist/index.js
+
+# stdio mode (for Claude Code CLI attachment)
+MCP_TRANSPORT=stdio node dist/index.js
+```
+
 ---
 
 ## Environment Variables
@@ -225,6 +273,15 @@ App available at **http://localhost:4200**.
 | `LLM_MAX_TOKENS` | Maximum tokens in the LLM response | `1024` |
 | `LLM_TIMEOUT_MS` | Per-request LLM timeout in milliseconds | `30000` |
 | `ASSISTANT_ENABLED` | Set to `false` to explicitly disable the assistant | enabled when `LLM_PROVIDER` + `LLM_MODEL` are set |
+
+### MCP Server
+
+| Variable | Description | Default |
+|---|---|---|
+| `MCP_AUTH_TOKEN` | Bearer token for HTTP transport — **required**, no default | — |
+| `MCP_PORT` | Port the MCP server listens on inside Docker | `3001` |
+| `MCP_TRANSPORT` | `http` (Docker default) or `stdio` (local CLI) | `http` |
+| `MCP_ALLOWED_ORIGINS` | Comma-separated allowed `Origin` values for browser clients; empty = allow all | — |
 
 **Example — Ollama (local):**
 ```env
@@ -267,10 +324,11 @@ docker compose down -v
 
 **Exposed ports:**
 
-| Service | Host port |
-|---|---|
-| Angular (Nginx) | 4200 |
-| Express API | 3000 |
+| Service | Host port | Notes |
+|---|---|---|
+| Angular (Nginx) | 4200 | Also proxies `/api` and `/mcp` |
+| Express API | — | Internal only (Docker network) |
+| MCP Server | — | Internal only; access via nginx `/mcp` |
 
 ---
 
@@ -280,6 +338,19 @@ docker compose down -v
 wmta_dashboard/
 ├── docker-compose.yml
 ├── .env.example
+├── mcp/
+│   ├── Dockerfile
+│   └── src/
+│       ├── index.ts                  # Entry: MCP_TRANSPORT switch (http / stdio)
+│       ├── server/
+│       │   └── http.ts               # node:http server; auth, origin, rate-limit, /mcp
+│       └── tools/
+│           ├── index.ts              # registerAllTools() aggregator
+│           ├── next_arrivals.ts      # Next-train predictions
+│           ├── line_status.ts        # Rail incidents by line
+│           ├── accessibility_status.ts # Elevator/escalator outages
+│           ├── service_history.ts    # Historical adherence summaries
+│           └── live_trains.ts        # Live train positions
 ├── server/
 │   ├── Dockerfile
 │   └── src/

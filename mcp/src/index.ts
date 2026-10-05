@@ -1,16 +1,13 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { registerNextArrivals } from './tools/next_arrivals.js';
-import { registerLineStatus } from './tools/line_status.js';
-import { registerAccessibilityStatus } from './tools/accessibility_status.js';
-import { registerServiceHistory } from './tools/service_history.js';
-import { registerLiveTrains } from './tools/live_trains.js';
+import { createServer } from './factory.js';
 
-const server = new McpServer({ name: 'wmata-dashboard', version: '1.0.0' });
-registerNextArrivals(server);
-registerLineStatus(server);
-registerAccessibilityStatus(server);
-registerServiceHistory(server);
-registerLiveTrains(server);
+export { createServer };
 
-await server.connect(new StdioServerTransport());
+const transport = process.env.MCP_TRANSPORT ?? 'http';
+
+if (transport === 'stdio') {
+  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+  await createServer().connect(new StdioServerTransport());
+} else {
+  const { startHttpServer } = await import('./server/http.js');
+  await startHttpServer();
+}

@@ -34,8 +34,6 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-30000}
-    ports:
-      - "3000:3000"
     depends_on:
       mongo:
         condition: service_healthy
@@ -56,13 +54,22 @@ services:
     restart: unless-stopped
     environment:
       API_BASE_URL: http://api:3000
+      MCP_PORT: 3001
+      MCP_TRANSPORT: http
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
     depends_on:
       api:
         condition: service_healthy
-    stdin_open: true
-    tty: true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     networks:
       - wmata
+    # No ports: — access via nginx /mcp only
 
   # ── Angular (Nginx) ───────────────────────────────────────────────────────────
   client:
@@ -74,6 +81,8 @@ services:
       - "4200:80"
     depends_on:
       api:
+        condition: service_healthy
+      mcp:
         condition: service_healthy
     networks:
       - wmata
