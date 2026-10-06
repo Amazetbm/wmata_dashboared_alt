@@ -155,6 +155,7 @@ async function fetchAndStore() {
     if (busIncidentsRes.status === 'fulfilled') {
       const busIncidents = (busIncidentsRes.value.data.BusIncidents || []).map(i => ({ ...i, snapshotAt }));
       if (busIncidents.length) await BusIncident.insertMany(busIncidents);
+      console.log(`[poller] Bus incidents from WMATA: ${busIncidents.length}`);
     } else {
       console.error('Bus incidents fetch error:', busIncidentsRes.reason?.message);
     }

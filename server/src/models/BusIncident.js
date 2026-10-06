@@ -9,6 +9,6 @@ const busIncidentSchema = new mongoose.Schema({
   DateUpdated: String,
 });
 
-busIncidentSchema.index({ snapshotAt: 1 });
+busIncidentSchema.index({ snapshotAt: 1 }, { expireAfterSeconds: 86400 });
 
 module.exports = mongoose.model('BusIncident', busIncidentSchema);
