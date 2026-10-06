@@ -3,7 +3,6 @@
 .panel-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
   z-index: 999; // above Leaflet's highest layer (control-container z-index: 800)
 }
 
