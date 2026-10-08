@@ -7,6 +7,7 @@ const { getNextTrains }        = require('./toolHandlers/getNextTrains');
 const { getElevatorOutages }   = require('./toolHandlers/getElevatorOutages');
 const { getScheduleAdherence } = require('./toolHandlers/getScheduleAdherence');
 const { getBusIncidents }      = require('./toolHandlers/getBusIncidents');
+const { getBusPositions }      = require('./toolHandlers/getBusPositions');
 
 const LINE_ENUM = { type: 'string', enum: ['RD', 'BL', 'OR', 'GR', 'YL', 'SV'] };
 
@@ -45,7 +46,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_train_positions',
-    description: 'Get current train positions and schedule adherence from the latest 30-second snapshot. Returns summary counts (on-time/minor/significant) and per-line breakdowns, plus the trains array. Optional line filter.',
+    description: 'Get current train positions from the latest 30-second snapshot. Returns per-train records with human-readable location (e.g. "between Farragut North (A02) and Metro Center (A01)"), destination station name, line, car count, and schedule adherence status (on-time/minor/significant). Also returns summary counts and per-line breakdowns. Consider filtering by line to keep responses focused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -110,6 +111,21 @@ const TOOL_DEFINITIONS = [
       required: ['from', 'to'],
     },
     handler: getBusIncidents,
+  },
+  {
+    name: 'get_bus_positions',
+    description: 'Get current Metrobus positions from the latest 30-second snapshot. '
+      + 'With no filter, returns a per-route summary (totalBuses, top 20 routes by count). '
+      + 'With route_id, returns up to 50 individual bus records with lat/lon, direction, '
+      + 'headsign, and deviation (minutes late, positive = behind schedule). '
+      + 'Call show_on_map with action=focus_route for any specific route mentioned.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        route_id: { type: 'string', description: 'Optional bus route ID, e.g. "16Y". Omit for system-wide summary.' },
+      },
+    },
+    handler: getBusPositions,
   },
   {
     name: 'show_on_map',

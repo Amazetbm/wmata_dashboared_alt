@@ -32,6 +32,8 @@ Tool usage guidelines:
 - Call show_on_map whenever your answer references a specific line, station, or bus route — this highlights it on the operator's map automatically.
 - When a tool returns empty results, say so explicitly; do not guess or fabricate data.
 - Schedule adherence thresholds: on-time = deviation ≤10% of headway, minor = ≤25%, significant = >25%.
+- get_train_positions returns a location field ("at Gallery Place (B01)", "between X and Y") and a destination station name per train — use these when describing train positions, not raw adherence numbers.
+- get_bus_positions without route_id gives a fleet-wide overview (totalBuses + top routes). With route_id it returns per-vehicle lat/lon, direction, headsign, and deviation. Call show_on_map(focus_route, <route_id>) whenever a specific bus route is discussed.
 - Return concise, operator-focused language. Avoid raw JSON in your replies.`;
 }
 

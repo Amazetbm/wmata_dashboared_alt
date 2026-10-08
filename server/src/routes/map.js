@@ -1,75 +1,6 @@
 const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
-
-// ── StandardRoutes cache (15-minute TTL) ──────────────────────────────────
-// StandardRoutes rarely change; caching avoids a WMATA API call on every
-// 30-second Angular poll. The cache is auto-busted when 0 trains resolve
-// despite active candidates, which indicates stale circuit ID data.
-let cachedRoutes   = null;
-let routesCachedAt = 0;
-const ROUTES_TTL_MS = 15 * 60 * 1000;
-
-async function getStandardRoutes(force = false) {
-  if (!force && cachedRoutes && (Date.now() - routesCachedAt) < ROUTES_TTL_MS) {
-    return cachedRoutes;
-  }
-  const { data } = await wmataClient.get('/TrainPositions/StandardRoutes?contentType=json');
-  cachedRoutes   = data.StandardRoutes ?? [];
-  routesCachedAt = Date.now();
-  console.log(`[/api/map] StandardRoutes (re)cached — ${cachedRoutes.length} routes at ${new Date(routesCachedAt).toISOString()}`);
-  return cachedRoutes;
-}
-
-/**
- * Builds a CircuitId → {lat, lon} lookup by linearly interpolating between
- * consecutive station-anchored circuits in each StandardRoute track segment.
- *
- * For each pair of adjacent station circuits (seqA … seqB), every circuit
- * between them receives a proportional lat/lon. Trains on circuits before the
- * first station terminus or after the last are omitted (they're in yards).
- *
- * NOTE: jStations uses the field name "Code" (not "StationCode"), so callers
- * must build stationMap with s.Code as the key — see usage below.
- */
-function buildCircuitPositionMap(standardRoutes, stationMap) {
-  const circuitPos = new Map();
-
-  for (const route of standardRoutes) {
-    // Sort ascending by SeqNum; the API usually delivers them in order but sort defensively.
-    const circuits = [...route.TrackCircuits].sort((a, b) => a.SeqNum - b.SeqNum);
-
-    let prevIdx = -1;
-    let prevStation = null;
-
-    for (let i = 0; i < circuits.length; i++) {
-      const tc = circuits[i];
-      if (!tc.StationCode) continue;
-
-      const station = stationMap[tc.StationCode];
-      if (!station) continue; // unknown code — skip
-
-      if (prevStation !== null) {
-        // Interpolate every circuit in the segment [prevIdx .. i] inclusive.
-        const segLen = i - prevIdx;
-        for (let j = prevIdx; j <= i; j++) {
-          const frac = segLen === 0 ? 0 : (j - prevIdx) / segLen;
-          circuitPos.set(circuits[j].CircuitId, {
-            lat: prevStation.Lat + frac * (station.Lat - prevStation.Lat),
-            lon: prevStation.Lon + frac * (station.Lon - prevStation.Lon),
-          });
-        }
-      } else {
-        // First station in the route — anchor just its own circuit.
-        circuitPos.set(tc.CircuitId, { lat: station.Lat, lon: station.Lon });
-      }
-
-      prevIdx = i;
-      prevStation = station;
-    }
-  }
-
-  return circuitPos;
-}
+const railGeometry = require('../lib/railGeometry');
 
 router.get('/', async (req, res) => {
   console.log('[/api/map] --- fetch cycle start ---');
@@ -98,20 +29,17 @@ router.get('/', async (req, res) => {
     const rawStations = stationsRes.status  === 'fulfilled' ? (stationsRes.value.data.Stations     ?? []) : [];
     const incidents   = incidentsRes.status === 'fulfilled' ? (incidentsRes.value.data.Incidents   ?? []) : [];
 
-    // StandardRoutes from 15-minute cache; falls back to stale value on fetch error
+    // StandardRoutes from shared 10-minute cache; falls back to stale value on fetch error
     let standardRoutes;
     try {
-      standardRoutes = await getStandardRoutes();
+      standardRoutes = await railGeometry.getStandardRoutes();
     } catch (err) {
       console.error('[/api/map] StandardRoutes fetch failed:', err.message);
-      standardRoutes = cachedRoutes ?? [];
+      standardRoutes = railGeometry.getCachedRoutes();
     }
 
-    const cacheAgeS = routesCachedAt ? Math.round((Date.now() - routesCachedAt) / 1000) : 'n/a';
-    console.log(`[/api/map] Raw counts — trains: ${rawTrains.length}, stations: ${rawStations.length}, incidents: ${incidents.length}, standardRoutes: ${standardRoutes.length} (cache_age=${cacheAgeS}s)`);
+    console.log(`[/api/map] Raw counts — trains: ${rawTrains.length}, stations: ${rawStations.length}, incidents: ${incidents.length}, standardRoutes: ${standardRoutes.length}`);
 
-    // Force-invalidate any stale cached reference so this fresh data is used below
-    // (map.js always fetches live, but make it explicit for clarity)
     // Diagnostic: confirm StandardRoutes and TrainPositions draw from the same circuit ID space
     if (standardRoutes.length > 0 && rawTrains.length > 0) {
       const sampleRouteCircuits = standardRoutes
@@ -121,7 +49,6 @@ router.get('/', async (req, res) => {
       const sampleTrainCircuits = rawTrains.slice(0, 5).map(t => t.CircuitId);
       console.log(`[/api/map] DIAG StandardRoutes circuit IDs (first 5 across all routes): ${sampleRouteCircuits.join(', ')}`);
       console.log(`[/api/map] DIAG TrainPositions circuit IDs (first 5 live trains):        ${sampleTrainCircuits.join(', ')}`);
-      // Check how many live train CircuitIds actually appear in the StandardRoutes circuit space
       const routeCircuitSet = new Set(
         standardRoutes.flatMap(r => (r.TrackCircuits ?? []).map(tc => tc.CircuitId))
       );
@@ -157,7 +84,7 @@ router.get('/', async (req, res) => {
     console.log(`[/api/map] stationMap size: ${Object.keys(stationMap).length} (first 5 keys: ${Object.keys(stationMap).slice(0, 5).join(', ')})`);
 
     // ── Circuit position interpolation ─────────────────────────────────────
-    const circuitPos = buildCircuitPositionMap(standardRoutes, stationMap);
+    const circuitPos = railGeometry.buildCircuitPositionMap(standardRoutes, stationMap);
     console.log(`[/api/map] circuitPos map size: ${circuitPos.size} circuits with interpolated lat/lon`);
 
     // ── Annotate trains with computed lat/lon ──────────────────────────────
@@ -178,12 +105,10 @@ router.get('/', async (req, res) => {
     // StandardRoutes circuit ID space is stale. Force-clear and re-fetch
     // immediately so this request still returns valid positions.
     if (trains.length === 0 && candidateTrains.length > 0) {
-      console.warn(`[/api/map] CACHE-BUST: 0/${candidateTrains.length} candidates resolved — force-clearing StandardRoutes cache and re-fetching`);
-      cachedRoutes   = null;
-      routesCachedAt = 0;
+      console.warn(`[/api/map] CACHE-BUST: 0/${candidateTrains.length} candidates resolved — force-refreshing StandardRoutes cache`);
       try {
-        standardRoutes = await getStandardRoutes(true);
-        const freshCircuitPos = buildCircuitPositionMap(standardRoutes, stationMap);
+        standardRoutes = await railGeometry.getStandardRoutes(true);
+        const freshCircuitPos = railGeometry.buildCircuitPositionMap(standardRoutes, stationMap);
         console.log(`[/api/map] CACHE-BUST circuitPos after re-fetch: ${freshCircuitPos.size} circuits`);
         trains = candidateTrains
           .map(t => {

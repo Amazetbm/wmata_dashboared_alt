@@ -6,41 +6,10 @@ const ElevatorOutage = require('../models/ElevatorOutage');
 const AdherenceSnapshot = require('../models/AdherenceSnapshot');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
-
-// Standard routes rarely change — refresh every 10 minutes
-let cachedRoutes = null;
-let routesCachedAt = 0;
-const ROUTES_TTL_MS = 10 * 60 * 1000;
-
-async function getStandardRoutes() {
-  if (cachedRoutes && Date.now() - routesCachedAt < ROUTES_TTL_MS) return cachedRoutes;
-  const { data } = await wmataClient.get('/TrainPositions/StandardRoutes?contentType=json');
-  cachedRoutes = data.StandardRoutes || [];
-  routesCachedAt = Date.now();
-  return cachedRoutes;
-}
-
-// Build circuit-id → seqNum lookup per line+track, return alongside route lengths
-function buildRouteMaps(standardRoutes) {
-  const circuitMap = {};  // lineCode -> trackNum -> Map<circuitId, seqNum>
-  const routeLen = {};    // lineCode -> trackNum -> total circuits
-
-  for (const route of standardRoutes) {
-    const { LineCode, TrackNum, TrackCircuits } = route;
-    if (!LineCode || !TrackNum || !Array.isArray(TrackCircuits)) continue;
-
-    if (!circuitMap[LineCode]) { circuitMap[LineCode] = {}; routeLen[LineCode] = {}; }
-
-    const m = new Map();
-    for (const tc of TrackCircuits) m.set(tc.CircuitId, tc.SeqNum);
-    circuitMap[LineCode][TrackNum] = m;
-    routeLen[LineCode][TrackNum] = TrackCircuits.length;
-  }
-  return { circuitMap, routeLen };
-}
+const railGeometry = require('../lib/railGeometry');
 
 function computeAdherence(trainPositions, standardRoutes) {
-  const { circuitMap, routeLen } = buildRouteMaps(standardRoutes);
+  const { circuitMap, routeLen } = railGeometry.buildRouteMaps(standardRoutes);
 
   // Keep only Normal-service trains with a resolvable circuit sequence
   const withSeq = trainPositions
@@ -86,6 +55,7 @@ function computeAdherence(trainPositions, standardRoutes) {
         deviation,
         status,
         carCount: t.CarCount,
+        destinationCode: t.DestinationStationCode ?? t.DestinationCode ?? null,
       });
     });
   }
@@ -163,7 +133,7 @@ async function fetchAndStore() {
     // Compute and persist adherence if we have train positions
     if (trainPositions.length) {
       try {
-        const standardRoutes = await getStandardRoutes();
+        const standardRoutes = await railGeometry.getStandardRoutes();
         const adherence = computeAdherence(trainPositions, standardRoutes);
         await AdherenceSnapshot.create({ snapshotAt, ...adherence });
       } catch (err) {
