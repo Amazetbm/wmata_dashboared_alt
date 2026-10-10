@@ -283,6 +283,12 @@ MCP_TRANSPORT=stdio node dist/index.js
 | `MCP_TRANSPORT` | `http` (Docker default) or `stdio` (local CLI) | `http` |
 | `MCP_ALLOWED_ORIGINS` | Comma-separated allowed `Origin` values for browser clients; empty = allow all | — |
 
+### Data Retention
+
+| Variable | Description | Default |
+|---|---|---|
+| `SNAPSHOT_RETENTION_DAYS` | Days to retain rail incidents, train positions, adherence snapshots, and elevator outage records. Change requires server restart. | `90` |
+
 **Example — Ollama (local):**
 ```env
 LLM_PROVIDER=openai-compatible
