@@ -15,9 +15,5 @@ const elevatorOutageSchema = new mongoose.Schema({
   DateUpdated: String,
 });
 
-// TTL: documents expire 90 days after snapshotAt.
-// On an existing collection, drop the old snapshotAt_1 index first:
-//   db.elevatoroutages.dropIndex("snapshotAt_1")
-elevatorOutageSchema.index({ snapshotAt: 1 }, { expireAfterSeconds: 7776000 });
 
 module.exports = mongoose.model('ElevatorOutage', elevatorOutageSchema);

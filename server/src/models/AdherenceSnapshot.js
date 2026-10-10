@@ -23,7 +23,7 @@ const lineSummarySchema = new mongoose.Schema({
 }, { _id: false });
 
 const adherenceSnapshotSchema = new mongoose.Schema({
-  snapshotAt: { type: Date, required: true, index: true },
+  snapshotAt: { type: Date, required: true },
   summary: {
     total: { type: Number, default: 0 },
     onTime: { type: Number, default: 0 },

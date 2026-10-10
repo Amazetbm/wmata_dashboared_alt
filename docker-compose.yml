@@ -34,6 +34,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-30000}
+      SNAPSHOT_RETENTION_DAYS: ${SNAPSHOT_RETENTION_DAYS:-90}
     depends_on:
       mongo:
         condition: service_healthy
