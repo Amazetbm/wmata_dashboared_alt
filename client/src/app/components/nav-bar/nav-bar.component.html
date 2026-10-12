@@ -4,5 +4,10 @@
     <a routerLink="/rail" routerLinkActive="active" class="nav-link">Rail Dashboard</a>
     <a routerLink="/bus" routerLinkActive="active" class="nav-link">Bus Map</a>
   </nav>
+  @if (assistantEnabled()) {
+    <button class="ask-btn" [class.active]="panelOpen()" (click)="togglePanel()">
+      Ask Dashboard
+    </button>
+  }
   <div class="subtitle">Live data auto-refreshes every 30 s</div>
 </header>

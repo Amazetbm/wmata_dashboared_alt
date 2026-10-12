@@ -1,0 +1,25 @@
+{
+  "snapshotAt": "2026-09-24T12:00:00.000Z",
+  "route": "16Y",
+  "count": 2,
+  "buses": [
+    {
+      "vehicleId": "V1",
+      "route": "16Y",
+      "direction": "NORTH",
+      "headsign": "Farragut Square",
+      "lat": 38.9,
+      "lon": -77.0,
+      "deviation": 2
+    },
+    {
+      "vehicleId": "V2",
+      "route": "16Y",
+      "direction": "SOUTH",
+      "headsign": "Pentagon",
+      "lat": 38.85,
+      "lon": -77.05,
+      "deviation": -1
+    }
+  ]
+}

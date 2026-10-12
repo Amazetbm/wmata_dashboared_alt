@@ -27,6 +27,9 @@
     <aside class="incident-sidebar">
       <div class="incident-sidebar-header">
         <h3>Active Incidents</h3>
+        @if (busData?.incidents_source === 'cached') {
+          <span class="cached-badge" title="Live feed returned no data — showing last 30 min snapshot">cached</span>
+        }
         @if (busData?.incidents?.length) {
           <span class="incident-count">{{ busData.incidents.length }}</span>
         }

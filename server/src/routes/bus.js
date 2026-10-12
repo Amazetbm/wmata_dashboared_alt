@@ -2,6 +2,9 @@ const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
+const { getBusPositions } = require('../assistant/toolHandlers/getBusPositions');
+
+const ROUTE_RE = /^[A-Za-z0-9]{1,10}$/;
 
 // In-memory cache for route details — fetched lazily per route, TTL 1 hour
 const routeDetailCache = new Map(); // routeId -> { shape0, shape1, cachedAt }
@@ -40,7 +43,26 @@ router.get('/map', async (req, res) => {
     const positions = posRes.status === 'fulfilled' ? (posRes.value.data.BusPositions || []) : [];
     const routes    = routesRes.status === 'fulfilled' ? (routesRes.value.data.Routes || []) : [];
     const stops     = stopsRes.status === 'fulfilled' ? (stopsRes.value.data.Stops || []) : [];
-    const incidents = incRes.status === 'fulfilled' ? (incRes.value.data.BusIncidents || []) : [];
+
+    let incidentsSource = 'live';
+    let incidents = incRes.status === 'fulfilled' ? (incRes.value.data.BusIncidents || []) : [];
+
+    if (incidents.length === 0) {
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+      const recent = await BusIncident.find({ snapshotAt: { $gte: cutoff } })
+        .sort({ snapshotAt: -1 })
+        .limit(100)
+        .lean();
+      if (recent.length > 0) {
+        const seen = new Set();
+        incidents = recent.filter(r => {
+          if (seen.has(r.IncidentID)) return false;
+          seen.add(r.IncidentID);
+          return true;
+        });
+        incidentsSource = 'cached';
+      }
+    }
 
     // Fetch shapes for the top 20 routes by active bus count (lazy + cached).
     // Capping at 20 prevents rate-limit failures when 100–200 routes fire in parallel.
@@ -60,7 +82,7 @@ router.get('/map', async (req, res) => {
       if (r.status === 'fulfilled' && r.value) routeShapes[id] = r.value;
     });
 
-    res.json({ positions, routes, stops, incidents, routeShapes });
+    res.json({ positions, routes, stops, incidents, incidents_source: incidentsSource, routeShapes });
   } catch (err) {
     console.error('[bus/map]', err.message);
     res.status(502).json({ error: 'Failed to load bus map data' });
@@ -184,6 +206,21 @@ router.get('/incidents/history', async (req, res) => {
   } catch (err) {
     console.error('[bus/incidents/history]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/bus/positions — enriched snapshot (delegates to assistant handler)
+router.get('/positions', async (req, res) => {
+  const { route_id } = req.query;
+  if (route_id !== undefined && !ROUTE_RE.test(route_id)) {
+    return res.status(400).json({ error: 'route_id must be alphanumeric (1–10 chars)' });
+  }
+  try {
+    const data = await getBusPositions(route_id ? { route_id } : undefined);
+    res.json(data);
+  } catch (err) {
+    console.error('[bus/positions]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
