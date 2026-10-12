@@ -1,6 +1,24 @@
 const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const TrainPosition = require('../models/TrainPosition');
+const { getTrainPositions } = require('../assistant/toolHandlers/getTrainPositions');
+
+const VALID_LINES = new Set(['RD', 'BL', 'OR', 'GR', 'YL', 'SV']);
+
+// Enriched located trains (human-readable location + destination)
+router.get('/located', async (req, res) => {
+  const { line } = req.query;
+  if (line !== undefined && !VALID_LINES.has(line.toUpperCase())) {
+    return res.status(400).json({ error: 'line must be one of RD, BL, OR, GR, YL, SV' });
+  }
+  try {
+    const data = await getTrainPositions(line ? { line } : undefined);
+    res.json(data);
+  } catch (err) {
+    console.error('[trains/located]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Live
 router.get('/live', async (req, res) => {

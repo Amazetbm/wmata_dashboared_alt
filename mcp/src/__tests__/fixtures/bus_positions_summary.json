@@ -1,0 +1,10 @@
+{
+  "snapshotAt": "2026-09-24T12:00:00.000Z",
+  "totalBuses": 1200,
+  "routesShown": 3,
+  "routes": [
+    { "route": "16Y", "count": 12, "headsigns": ["Farragut Square"] },
+    { "route": "30N", "count": 8,  "headsigns": ["Friendship Heights"] },
+    { "route": "42",  "count": 6,  "headsigns": ["Mount Pleasant"] }
+  ]
+}

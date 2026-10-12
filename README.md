@@ -136,7 +136,7 @@ Set `ASSISTANT_ENABLED=false` to disable the feature without removing the enviro
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server exposing live WMATA data as tools for AI clients (Claude Code, Claude Desktop, MCP Inspector). Accessible at `/mcp` via the nginx reverse proxy.
 
-**Five tools:**
+**Six tools:**
 
 | Tool | What it does |
 |---|---|
@@ -144,7 +144,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server exposing live
 | `line_status` | Active rail incidents filtered by line |
 | `accessibility_status` | Active elevator and escalator outages |
 | `service_history` | Historical schedule-adherence summaries |
-| `live_trains` | Current train positions and adherence snapshot |
+| `live_trains` | Current train positions with station-relative location and destination name; optional line filter |
+| `bus_positions` | Current bus positions — route summary or filtered list with coordinates and deviation |
 
 **Security:** Every request requires `Authorization: Bearer <MCP_AUTH_TOKEN>`. The server refuses to start in HTTP mode without a token.
 
@@ -356,7 +357,8 @@ wmta_dashboard/
 │           ├── line_status.ts        # Rail incidents by line
 │           ├── accessibility_status.ts # Elevator/escalator outages
 │           ├── service_history.ts    # Historical adherence summaries
-│           └── live_trains.ts        # Live train positions
+│           ├── live_trains.ts        # Live train positions with enriched location
+│           └── bus_positions.ts      # Current bus positions by route
 ├── server/
 │   ├── Dockerfile
 │   └── src/
@@ -456,6 +458,7 @@ Each 30-second snapshot stores per-train detail plus pre-aggregated network and 
 | GET | `/api/incidents/history?from=&to=` | Historical incident snapshots |
 | GET | `/api/trains/live` | Live train positions |
 | GET | `/api/trains/history?from=&to=&line=` | Historical train position snapshots |
+| GET | `/api/trains/located?line=` | Latest snapshot enriched with station-relative location and destination name; `line` optional (RD/BL/OR/GR/YL/SV) |
 | GET | `/api/elevators/live` | Active elevator/escalator outages |
 | GET | `/api/elevators/history?from=&to=` | Historical outage snapshots |
 | GET | `/api/predictions/:stationCode` | Next-train predictions for a station |
@@ -471,6 +474,7 @@ Each 30-second snapshot stores per-train detail plus pre-aggregated network and 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/bus/map` | Live positions, route list, stops, incidents, and route shapes for all active routes |
+| GET | `/api/bus/positions?route_id=` | Latest snapshot: filtered bus list (up to 50) with route_id, or top-20 route summary without |
 | GET | `/api/bus/history/positions?from=&to=` | Historical bus position snapshots (max 5000) |
 | GET | `/api/bus/history/incidents?from=&to=` | Historical bus incident snapshots (max 5000) |
 

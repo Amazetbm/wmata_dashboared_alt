@@ -20,11 +20,18 @@ function mockLatest(value) {
 
 // ── Tests: no snapshot ────────────────────────────────────────────────────────
 
-test('returns empty result when no snapshot exists', async () => {
+test('returns empty summary shape when no snapshot and no route_id', async () => {
   mockLatest(null);
 
   const result = await getBusPositions();
-  expect(result).toEqual({ snapshotAt: null, count: 0, routes: [], buses: [] });
+  expect(result).toEqual({ snapshotAt: null, totalBuses: 0, routesShown: 0, routes: [] });
+});
+
+test('returns empty filtered shape when no snapshot and route_id provided', async () => {
+  mockLatest(null);
+
+  const result = await getBusPositions({ route_id: '16Y' });
+  expect(result).toEqual({ snapshotAt: null, route: '16Y', count: 0, buses: [] });
 });
 
 // ── Tests: no route_id (system-wide summary) ──────────────────────────────────

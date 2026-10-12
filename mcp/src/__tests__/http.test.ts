@@ -230,17 +230,18 @@ describe('MCP protocol round-trip', () => {
     expect(body.result?.serverInfo?.name).toBe('wmata-dashboard');
   });
 
-  it('tools/list returns exactly 5 tools', async () => {
+  it('tools/list returns exactly 6 tools', async () => {
     const res = await post('/mcp', rpc('tools/list', {}, 2), authHeaders);
 
     expect(res.status).toBe(200);
     const body = res.json() as { result?: { tools: { name: string }[] } };
     const tools = body.result?.tools ?? [];
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(6);
 
     const names = tools.map((t: { name: string }) => t.name).sort();
     expect(names).toEqual([
       'accessibility_status',
+      'bus_positions',
       'line_status',
       'live_trains',
       'next_arrivals',

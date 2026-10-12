@@ -13,6 +13,7 @@ async function getTrainPositions({ line } = {}) {
     const code = line.toUpperCase();
     trains        = (trains        || []).filter(t => t.lineCode === code);
     lineSummaries = (lineSummaries || []).filter(l => l.lineCode === code);
+    summary       = lineSummaries[0] ?? summary;
   }
 
   // Enrich trains with human-readable location and destination name

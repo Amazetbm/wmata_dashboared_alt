@@ -121,6 +121,43 @@ test('filters by line when provided', async () => {
   expect(result.trains[0].lineCode).toBe('RD');
 });
 
+test('summary reflects line when line filter is applied', async () => {
+  const multiLineSummarySnapshot = {
+    ...snapshotDoc,
+    summary: { total: 10, onTime: 8, minor: 2, significant: 0 },
+    lineSummaries: [
+      { lineCode: 'RD', total: 2, onTime: 1, minor: 1, significant: 0 },
+      { lineCode: 'BL', total: 8, onTime: 7, minor: 1, significant: 0 },
+    ],
+    trains: snapshotDoc.trains,
+  };
+  AdherenceSnapshot.findOne.mockReturnValue({
+    sort: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue(multiLineSummarySnapshot),
+    }),
+  });
+
+  const result = await getTrainPositions({ line: 'RD' });
+  expect(result.summary).toMatchObject({ lineCode: 'RD', total: 2 });
+});
+
+test('summary falls back to network summary when line has no lineSummary entry', async () => {
+  const noSummarySnapshot = {
+    ...snapshotDoc,
+    summary: { total: 10, onTime: 8, minor: 2, significant: 0 },
+    lineSummaries: [],
+    trains: snapshotDoc.trains,
+  };
+  AdherenceSnapshot.findOne.mockReturnValue({
+    sort: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue(noSummarySnapshot),
+    }),
+  });
+
+  const result = await getTrainPositions({ line: 'RD' });
+  expect(result.summary).toMatchObject({ total: 10 });
+});
+
 test('returns empty result when no snapshot exists', async () => {
   AdherenceSnapshot.findOne.mockReturnValue({
     sort: jest.fn().mockReturnValue({

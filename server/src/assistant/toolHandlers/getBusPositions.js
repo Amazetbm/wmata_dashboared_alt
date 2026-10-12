@@ -4,7 +4,11 @@ const BusPosition = require('../../models/BusPosition');
 
 async function getBusPositions({ route_id } = {}) {
   const latest = await BusPosition.findOne().sort({ snapshotAt: -1 }).select('snapshotAt').lean();
-  if (!latest) return { snapshotAt: null, count: 0, routes: [], buses: [] };
+  if (!latest) {
+    return route_id
+      ? { snapshotAt: null, route: route_id.toUpperCase(), count: 0, buses: [] }
+      : { snapshotAt: null, totalBuses: 0, routesShown: 0, routes: [] };
+  }
 
   const { snapshotAt } = latest;
   const match = { snapshotAt };

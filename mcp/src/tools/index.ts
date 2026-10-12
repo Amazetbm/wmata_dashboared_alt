@@ -4,6 +4,7 @@ import { registerLineStatus } from './line_status.js';
 import { registerAccessibilityStatus } from './accessibility_status.js';
 import { registerServiceHistory } from './service_history.js';
 import { registerLiveTrains } from './live_trains.js';
+import { registerBusPositions } from './bus_positions.js';
 
 export function registerAllTools(server: McpServer): void {
   registerNextArrivals(server);
@@ -11,4 +12,5 @@ export function registerAllTools(server: McpServer): void {
   registerAccessibilityStatus(server);
   registerServiceHistory(server);
   registerLiveTrains(server);
+  registerBusPositions(server);
 }

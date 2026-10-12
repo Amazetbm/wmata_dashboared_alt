@@ -1,0 +1,25 @@
+{
+  "snapshotAt": "2026-09-24T12:00:00.000Z",
+  "summary": { "lineCode": "RD", "total": 20, "onTime": 16, "minor": 3, "significant": 1 },
+  "lineSummaries": [
+    { "lineCode": "RD", "total": 20, "onTime": 16, "minor": 3, "significant": 1 }
+  ],
+  "trains": [
+    {
+      "trainId": "T123",
+      "lineCode": "RD",
+      "carCount": 8,
+      "status": "on-time",
+      "location": "at Metro Center (A01)",
+      "destination": "Shady Grove"
+    },
+    {
+      "trainId": "T124",
+      "lineCode": "RD",
+      "carCount": 6,
+      "status": "minor",
+      "location": "between Foggy Bottom (C04) and Rosslyn (C05)",
+      "destination": "Glenmont"
+    }
+  ]
+}

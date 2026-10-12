@@ -2,6 +2,9 @@ const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
+const { getBusPositions } = require('../assistant/toolHandlers/getBusPositions');
+
+const ROUTE_RE = /^[A-Za-z0-9]{1,10}$/;
 
 // In-memory cache for route details — fetched lazily per route, TTL 1 hour
 const routeDetailCache = new Map(); // routeId -> { shape0, shape1, cachedAt }
@@ -203,6 +206,21 @@ router.get('/incidents/history', async (req, res) => {
   } catch (err) {
     console.error('[bus/incidents/history]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/bus/positions — enriched snapshot (delegates to assistant handler)
+router.get('/positions', async (req, res) => {
+  const { route_id } = req.query;
+  if (route_id !== undefined && !ROUTE_RE.test(route_id)) {
+    return res.status(400).json({ error: 'route_id must be alphanumeric (1–10 chars)' });
+  }
+  try {
+    const data = await getBusPositions(route_id ? { route_id } : undefined);
+    res.json(data);
+  } catch (err) {
+    console.error('[bus/positions]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
