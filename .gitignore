@@ -1,6 +1,7 @@
 node_modules/
 server/node_modules/
 client/node_modules/
+mcp/dist/
 .env
 server/.env
 dist/
