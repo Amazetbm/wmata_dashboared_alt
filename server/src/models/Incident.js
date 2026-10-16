@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const incidentSchema = new mongoose.Schema({
-  snapshotAt: { type: Date, required: true, index: true },
+  snapshotAt: { type: Date, required: true },
   IncidentID: String,
   Description: String,
   StartLocationFullName: String,

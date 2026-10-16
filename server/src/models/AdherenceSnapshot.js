@@ -11,6 +11,7 @@ const trainAdherenceSchema = new mongoose.Schema({
   deviation: Number,
   status: { type: String, enum: ['on-time', 'minor', 'significant'] },
   carCount: Number,
+  destinationCode: { type: String, default: null },
 }, { _id: false });
 
 const lineSummarySchema = new mongoose.Schema({
@@ -22,7 +23,7 @@ const lineSummarySchema = new mongoose.Schema({
 }, { _id: false });
 
 const adherenceSnapshotSchema = new mongoose.Schema({
-  snapshotAt: { type: Date, required: true, index: true },
+  snapshotAt: { type: Date, required: true },
   summary: {
     total: { type: Number, default: 0 },
     onTime: { type: Number, default: 0 },

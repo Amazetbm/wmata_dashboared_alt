@@ -122,6 +122,19 @@
   }
 }
 
+.cached-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #313244;
+  color: #a6adc8;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: default;
+}
+
 .incident-count {
   margin-left: auto;
   font-size: 11px;
