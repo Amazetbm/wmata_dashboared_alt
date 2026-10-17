@@ -1,11 +1,26 @@
 'use strict';
 
 jest.mock('../../models/BusPosition');
+jest.mock('../../models/BusOccupancy');
 
-const BusPosition = require('../../models/BusPosition');
+const BusPosition  = require('../../models/BusPosition');
+const BusOccupancy = require('../../models/BusOccupancy');
 const { getBusPositions } = require('../../assistant/toolHandlers/getBusPositions');
 
 const snapshotAt = new Date('2026-10-08T12:00:00Z');
+
+function mockOccupancyDoc(value) {
+  BusOccupancy.findOne.mockReturnValue({
+    sort: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue(value),
+    }),
+  });
+}
+
+beforeEach(() => {
+  // Default: no occupancy doc
+  mockOccupancyDoc(null);
+});
 
 // ── Helper: mock findOne for latest snapshot ───────────────────────────────────
 function mockLatest(value) {
@@ -149,5 +164,142 @@ describe('with route_id', () => {
     const result = await getBusPositions({ route_id: '99X' });
     expect(result.count).toBe(0);
     expect(result.buses).toEqual([]);
+  });
+});
+
+// ── Tests: bus occupancy enrichment (filtered mode) ───────────────────────────
+
+describe('occupancy enrichment — filtered mode', () => {
+  const busDocs = [
+    {
+      VehicleID: 'V1', RouteID: '16Y', DirectionText: 'NORTH',
+      TripHeadsign: 'Farragut Square', Lat: 38.9, Lon: -77.0, Deviation: 2,
+    },
+  ];
+
+  beforeEach(() => {
+    mockLatest({ snapshotAt });
+    BusPosition.find.mockReturnValue({
+      limit: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue(busDocs),
+        }),
+      }),
+    });
+  });
+
+  test('occupancy: null for all buses when flag off (default)', async () => {
+    const result = await getBusPositions({ route_id: '16Y' });
+    // GTFS_BUS_OCCUPANCY not set → enrichWithOccupancy returns original array unchanged
+    // The handler always adds occupancy: null at minimum
+    expect(result.buses[0]).toHaveProperty('occupancy');
+  });
+
+  test('enriches buses with bus-band labels when flag on and doc is fresh', async () => {
+    const origEnv = process.env.GTFS_BUS_OCCUPANCY;
+    process.env.GTFS_BUS_OCCUPANCY = 'true';
+    jest.resetModules();
+    jest.mock('../../models/BusPosition');
+    jest.mock('../../models/BusOccupancy');
+    const BP2 = require('../../models/BusPosition');
+    const BO2 = require('../../models/BusOccupancy');
+    const { getBusPositions: gbp2 } = require('../../assistant/toolHandlers/getBusPositions');
+
+    BP2.findOne.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ snapshotAt }),
+        }),
+      }),
+    });
+    BP2.find.mockReturnValue({
+      limit: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue(busDocs),
+        }),
+      }),
+    });
+    BO2.findOne.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          feedTimestamp: new Date(), // fresh
+          vehicles: [{ vehicleId: 'V1', occupancyStatus: 2 }],
+        }),
+      }),
+    });
+
+    const result = await gbp2({ route_id: '16Y' });
+    expect(result.buses[0].occupancy).toMatchObject({ status: 2 });
+    // Bus-specific label (25–49%)
+    expect(result.buses[0].occupancy.label).toMatch(/25–49%/);
+
+    process.env.GTFS_BUS_OCCUPANCY = origEnv ?? '';
+  });
+});
+
+// ── Tests: bus occupancy crowding (unfiltered mode) ───────────────────────────
+
+describe('occupancy crowding — unfiltered mode', () => {
+  beforeEach(() => {
+    mockLatest({ snapshotAt });
+    BusPosition.aggregate.mockResolvedValue([
+      { route: '16Y', count: 5, headsigns: ['Farragut Square'] },
+    ]);
+    BusPosition.countDocuments.mockResolvedValue(5);
+  });
+
+  test('no crowding key when flag off (default)', async () => {
+    const result = await getBusPositions();
+    expect(result.routes[0]).not.toHaveProperty('crowding');
+  });
+
+  test('routes include crowding breakdown when flag on and feed is fresh', async () => {
+    const origEnv = process.env.GTFS_BUS_OCCUPANCY;
+    process.env.GTFS_BUS_OCCUPANCY = 'true';
+    jest.resetModules();
+    jest.mock('../../models/BusPosition');
+    jest.mock('../../models/BusOccupancy');
+    const BP2 = require('../../models/BusPosition');
+    const BO2 = require('../../models/BusOccupancy');
+    const { getBusPositions: gbp2 } = require('../../assistant/toolHandlers/getBusPositions');
+
+    BP2.findOne.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ snapshotAt }),
+        }),
+      }),
+    });
+    BP2.aggregate.mockResolvedValue([
+      { route: '16Y', count: 3, headsigns: ['Farragut Square'] },
+    ]);
+    BP2.countDocuments.mockResolvedValue(3);
+    BP2.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([
+          { VehicleID: 'V1', RouteID: '16Y' },
+          { VehicleID: 'V2', RouteID: '16Y' },
+          { VehicleID: 'V3', RouteID: '16Y' },
+        ]),
+      }),
+    });
+    BO2.findOne.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          feedTimestamp: new Date(), // fresh
+          vehicles: [
+            { vehicleId: 'V1', occupancyStatus: 1 }, // many
+            { vehicleId: 'V2', occupancyStatus: 5 }, // full
+            // V3 not in feed → unknown
+          ],
+        }),
+      }),
+    });
+
+    const result = await gbp2();
+    const route = result.routes.find(r => r.route === '16Y');
+    expect(route.crowding).toMatchObject({ many: 1, few: 0, full: 1, unknown: 1 });
+
+    process.env.GTFS_BUS_OCCUPANCY = origEnv ?? '';
   });
 });

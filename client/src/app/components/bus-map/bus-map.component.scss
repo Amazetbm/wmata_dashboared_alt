@@ -73,6 +73,30 @@
   margin-left: auto;
 }
 
+// ── Occupancy ring legend ──────────────────────────────────────────────────────
+
+.occupancy-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #6c7086;
+}
+
+.occ-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.occ-many { color: #a6e3a1; }
+.occ-few  { color: #fab387; }
+.occ-full { color: #f38ba8; }
+
 // ── Map + sidebar ─────────────────────────────────────────────────────────────
 
 .bus-map-body {

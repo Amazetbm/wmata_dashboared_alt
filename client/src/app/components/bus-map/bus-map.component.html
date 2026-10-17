@@ -17,6 +17,11 @@
     @if (busData?.positions?.length) {
       <span class="bus-count">{{ busData.positions.length }} buses tracked</span>
     }
+    <span class="occupancy-legend">
+      <span class="occ-dot occ-many"></span>Many seats
+      <span class="occ-dot occ-few"></span>Few seats
+      <span class="occ-dot occ-full"></span>Full
+    </span>
     @if (loading) { <span class="loading">Loading…</span> }
     @if (error) { <span class="error">{{ error }}</span> }
   </div>

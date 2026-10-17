@@ -10,7 +10,8 @@
       "headsign": "Farragut Square",
       "lat": 38.9,
       "lon": -77.0,
-      "deviation": 2
+      "deviation": 2,
+      "occupancy": { "status": 2, "label": "Few seats (25–49% full)" }
     },
     {
       "vehicleId": "V2",
@@ -19,7 +20,8 @@
       "headsign": "Pentagon",
       "lat": 38.85,
       "lon": -77.05,
-      "deviation": -1
+      "deviation": -1,
+      "occupancy": null
     }
   ]
 }

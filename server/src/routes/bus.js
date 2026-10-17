@@ -2,7 +2,11 @@ const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
+const BusOccupancy = require('../models/BusOccupancy');
 const { getBusPositions } = require('../assistant/toolHandlers/getBusPositions');
+const { enrichWithOccupancy, BUS_OCCUPANCY_LABELS } = require('../lib/occupancyEnricher');
+
+const GTFS_BUS_ENABLED = process.env.GTFS_BUS_OCCUPANCY === 'true';
 
 const ROUTE_RE = /^[A-Za-z0-9]{1,10}$/;
 
@@ -82,7 +86,13 @@ router.get('/map', async (req, res) => {
       if (r.status === 'fulfilled' && r.value) routeShapes[id] = r.value;
     });
 
-    res.json({ positions, routes, stops, incidents, incidents_source: incidentsSource, routeShapes });
+    const enrichedPositions = await enrichWithOccupancy(
+      positions, 'VehicleID', GTFS_BUS_ENABLED,
+      () => BusOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
+      BUS_OCCUPANCY_LABELS,
+    );
+
+    res.json({ positions: enrichedPositions, routes, stops, incidents, incidents_source: incidentsSource, routeShapes });
   } catch (err) {
     console.error('[bus/map]', err.message);
     res.status(502).json({ error: 'Failed to load bus map data' });

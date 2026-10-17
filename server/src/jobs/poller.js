@@ -7,10 +7,14 @@ const AdherenceSnapshot = require('../models/AdherenceSnapshot');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
 const RailOccupancy = require('../models/RailOccupancy');
+const BusOccupancy = require('../models/BusOccupancy');
 const railGeometry = require('../lib/railGeometry');
 const { decodeVehiclePositions } = require('../lib/gtfsRt');
 
-const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
+const GTFS_RAIL_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
+const GTFS_BUS_ENABLED  = process.env.GTFS_BUS_OCCUPANCY  === 'true';
+// Keep old name for any internal references below
+const GTFS_ENABLED = GTFS_RAIL_ENABLED;
 
 function computeAdherence(trainPositions, standardRoutes) {
   const { circuitMap, routeLen } = railGeometry.buildRouteMaps(standardRoutes);
@@ -95,9 +99,16 @@ async function fetchAndStore() {
       wmataClient.get('/Bus.svc/json/jBusPositions'),
       wmataClient.get('/Incidents.svc/json/BusIncidents'),
     ];
-    if (GTFS_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-vehiclepositions.pb', { responseType: 'arraybuffer' }));
+    if (GTFS_RAIL_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-vehiclepositions.pb', { responseType: 'arraybuffer' }));
+    if (GTFS_BUS_ENABLED)  feeds.push(wmataClient.get('/gtfs/bus-gtfsrt-vehiclepositions.pb',  { responseType: 'arraybuffer' }));
 
-    const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes, gtfsRes] = await Promise.allSettled(feeds);
+    const results = await Promise.allSettled(feeds);
+    const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes] = results;
+    let idx = 5;
+    const gtfsRailRes = GTFS_RAIL_ENABLED ? results[idx++] : undefined;
+    const gtfsBusRes  = GTFS_BUS_ENABLED  ? results[idx++] : undefined;
+    // Legacy alias for the rail block below
+    const gtfsRes = gtfsRailRes;
 
     if (incRes.status === 'fulfilled') {
       const incidents = (incRes.value.data.Incidents || []).map(i => ({ ...i, snapshotAt }));
@@ -137,15 +148,34 @@ async function fetchAndStore() {
       console.error('Bus incidents fetch error:', busIncidentsRes.reason?.message);
     }
 
-    if (GTFS_ENABLED && gtfsRes?.status === 'fulfilled') {
+    if (GTFS_RAIL_ENABLED && gtfsRes?.status === 'fulfilled') {
       try {
         const { feedTimestamp, vehicles } = decodeVehiclePositions(gtfsRes.value.data);
         await RailOccupancy.create({ snapshotAt, feedTimestamp, vehicles });
       } catch (err) {
-        console.error('GTFS-RT decode/save error:', err.message);
+        console.error('GTFS-RT rail decode/save error:', err.message);
       }
-    } else if (GTFS_ENABLED && gtfsRes) {
-      console.error('GTFS-RT fetch error:', gtfsRes.reason?.message);
+    } else if (GTFS_RAIL_ENABLED && gtfsRes) {
+      console.error('GTFS-RT rail fetch error:', gtfsRes.reason?.message);
+    }
+
+    if (GTFS_BUS_ENABLED && gtfsBusRes?.status === 'fulfilled') {
+      try {
+        const { feedTimestamp, vehicles } = decodeVehiclePositions(gtfsBusRes.value.data);
+        // GTFS-RT status 7 = NO_DATA_AVAILABLE. Skip the DB write when every vehicle
+        // reports no data — avoids storing useless documents and keeps the enricher's
+        // null-doc path active (all buses get occupancy: null, same result, no overhead).
+        const hasUsefulData = vehicles.some(v => v.occupancyStatus !== 7 && v.occupancyStatus !== 0);
+        if (hasUsefulData) {
+          await BusOccupancy.create({ snapshotAt, feedTimestamp, vehicles });
+        } else {
+          console.log(`[poller] GTFS-RT bus: all ${vehicles.length} vehicles report NO_DATA_AVAILABLE — skipping write`);
+        }
+      } catch (err) {
+        console.error('GTFS-RT bus decode/save error:', err.message);
+      }
+    } else if (GTFS_BUS_ENABLED && gtfsBusRes) {
+      console.error('GTFS-RT bus fetch error:', gtfsBusRes.reason?.message);
     }
 
     // Compute and persist adherence if we have train positions
