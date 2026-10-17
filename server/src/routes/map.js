@@ -1,6 +1,10 @@
 const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const railGeometry = require('../lib/railGeometry');
+const RailOccupancy = require('../models/RailOccupancy');
+const { enrichTrainsWithOccupancy } = require('../lib/occupancyEnricher');
+
+const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
 
 router.get('/', async (req, res) => {
   console.log('[/api/map] --- fetch cycle start ---');
@@ -166,6 +170,13 @@ router.get('/', async (req, res) => {
       lon:  s.Lon,
       lines: [s.LineCode1, s.LineCode2, s.LineCode3, s.LineCode4].filter(Boolean),
     }));
+
+    trains = await enrichTrainsWithOccupancy(
+      trains,
+      'TrainId',
+      GTFS_ENABLED,
+      () => RailOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
+    );
 
     console.log(`[/api/map] Response: ${trains.length} trains, ${stations.length} stations, ${incidents.length} incidents, ${Object.keys(linePolylines).length} polylines`);
     console.log('[/api/map] --- fetch cycle end ---');

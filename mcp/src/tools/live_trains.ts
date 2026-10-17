@@ -4,8 +4,10 @@ import apiFetch, { ApiError, type Fetcher } from '../client.js';
 
 const DESCRIPTION =
   'Current positions and schedule adherence for trains on a rail line. ' +
-  'Returns station-relative location (e.g. "at Metro Center (A01)", "between Foggy Bottom and Rosslyn") ' +
-  'and destination name for each train, plus a line adherence summary. ' +
+  'Returns station-relative location (e.g. "at Metro Center (A01)", "between Foggy Bottom and Rosslyn"), ' +
+  'destination name, and occupancy when available for each train, plus a line adherence summary. ' +
+  'Occupancy bands: "Many seats (<20% full)", "Few seats (20–32% full)", "Full (≥33% full)". ' +
+  'Occupancy is null when the GTFS-RT feed is disabled or stale. ' +
   'Omit line to get all lines.';
 
 const LINE_ENUM = z.enum(['RD', 'BL', 'OR', 'SV', 'GR', 'YL']);
@@ -18,6 +20,7 @@ interface Train {
   status: string;
   location: string;
   destination: string;
+  occupancy?: { status: number; label: string | null } | null;
 }
 
 interface TrainsLocated {
@@ -49,6 +52,7 @@ export async function liveTrainsHandler(
         status: t.status,
         location: t.location,
         destination: t.destination,
+        ...(t.occupancy !== undefined ? { occupancy: t.occupancy } : {}),
       })),
     };
 

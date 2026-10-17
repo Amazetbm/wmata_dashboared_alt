@@ -37,9 +37,9 @@ export class TrainPositionsPanelComponent implements OnInit, OnDestroy {
   }
 
   load() {
-    this.wmata.getLiveTrains().subscribe({
+    this.wmata.getLocatedTrains(this.selectedLine || undefined).subscribe({
       next: data => {
-        this.allTrains = data.TrainPositions || [];
+        this.allTrains = data.trains || [];
         this.applyFilter();
         this.loading = false;
         this.error = '';
@@ -53,15 +53,29 @@ export class TrainPositionsPanelComponent implements OnInit, OnDestroy {
 
   applyFilter() {
     this.filtered = this.selectedLine
-      ? this.allTrains.filter(t => t.LineCode === this.selectedLine)
+      ? this.allTrains.filter(t => t.lineCode === this.selectedLine)
       : this.allTrains;
   }
 
   onLineChange() {
-    this.applyFilter();
+    this.load();
   }
 
   colorFor(line: string): string {
     return this.lineColors[line] || '#888';
+  }
+
+  get hasOccupancy(): boolean {
+    return this.filtered.some(t => t.occupancy != null);
+  }
+
+  occupancyClass(occ: any): string {
+    if (occ == null) return 'occ-null';
+    switch (occ.status) {
+      case 1: return 'occ-many';
+      case 2: return 'occ-few';
+      case 5: return 'occ-full';
+      default: return 'occ-null';
+    }
   }
 }

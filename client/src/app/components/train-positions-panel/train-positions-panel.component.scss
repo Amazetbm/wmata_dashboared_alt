@@ -6,27 +6,60 @@
   select { background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 4px 8px; border-radius: 4px; }
 }
 .count { font-size: 12px; color: #6c7086; }
-.train-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
-}
-.train-card {
-  background: #1e1e2e;
-  border: 2px solid #45475a;
-  border-radius: 6px;
-  padding: 8px;
+
+.train-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 12px;
+  th {
+    text-align: left;
+    padding: 6px 8px;
+    color: #6c7086;
+    border-bottom: 1px solid #313244;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  td {
+    padding: 5px 8px;
+    color: #cdd6f4;
+    border-bottom: 1px solid #1e1e2e;
+    vertical-align: middle;
+  }
+  tr:hover td { background: #181825; }
 }
-.train-id { font-weight: 700; margin-bottom: 4px; }
-.train-line {
+
+.train-id { font-weight: 700; }
+
+.line-chip {
   display: inline-block;
   color: #000;
   font-weight: 700;
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 11px;
-  margin-bottom: 4px;
 }
-.train-detail { color: #a6adc8; font-size: 11px; }
-.service { color: #89dceb; text-transform: uppercase; }
+
+.status-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  &.status-on-time  { background: #1e3a28; color: #a6e3a1; }
+  &.status-minor    { background: #3a2e1e; color: #fab387; }
+  &.status-significant { background: #3a1e1e; color: #f38ba8; }
+}
+
+.location { color: #a6adc8; max-width: 260px; }
+
+.occ-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  &.occ-many { background: #1e3a28; color: #a6e3a1; }
+  &.occ-few  { background: #3a2e1e; color: #fab387; }
+  &.occ-full { background: #3a1e1e; color: #f38ba8; }
+}
+.occ-null { color: #6c7086; }

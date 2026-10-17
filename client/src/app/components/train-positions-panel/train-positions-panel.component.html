@@ -10,14 +10,42 @@
   </div>
   <div *ngIf="loading" class="loading">Loading...</div>
   <div *ngIf="error" class="error">{{ error }}</div>
-  <div class="train-grid">
-    <div *ngFor="let train of filtered" class="train-card" [style.border-color]="colorFor(train.LineCode)">
-      <div class="train-id">Train {{ train.TrainNumber || train.TrainId }}</div>
-      <div class="train-line" [style.background]="colorFor(train.LineCode)">{{ train.LineCode }}</div>
-      <div class="train-detail">Cars: {{ train.CarCount }}</div>
-      <div class="train-detail">Dir: {{ train.DirectionNum }}</div>
-      <div class="train-detail">→ {{ train.DestinationStationCode || '—' }}</div>
-      <div class="train-detail service">{{ train.ServiceType }}</div>
-    </div>
-  </div>
+  <table *ngIf="!loading && filtered.length" class="train-table">
+    <thead>
+      <tr>
+        <th>Train</th>
+        <th>Line</th>
+        <th>Cars</th>
+        <th>Status</th>
+        <th>Location</th>
+        <th>Destination</th>
+        <th *ngIf="hasOccupancy">Crowding</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (train of filtered; track train.trainId) {
+        <tr>
+          <td class="train-id">{{ train.trainId }}</td>
+          <td>
+            <span class="line-chip" [style.background]="colorFor(train.lineCode)">{{ train.lineCode }}</span>
+          </td>
+          <td>{{ train.carCount ?? '—' }}</td>
+          <td>
+            <span class="status-chip" [class]="'status-' + train.status">{{ train.status }}</span>
+          </td>
+          <td class="location">{{ train.location }}</td>
+          <td>{{ train.destination }}</td>
+          @if (hasOccupancy) {
+            <td>
+              @if (train.occupancy != null) {
+                <span class="occ-chip" [class]="occupancyClass(train.occupancy)">{{ train.occupancy.label }}</span>
+              } @else {
+                <span class="occ-null">—</span>
+              }
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
 </div>

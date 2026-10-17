@@ -97,4 +97,20 @@ describe('liveTrainsHandler', () => {
     const data = JSON.parse(result.content[0].text);
     expect(data.error).toMatch(/503/);
   });
+
+  it('passes occupancy through when present on a train', async () => {
+    const fetcher = jest.fn().mockResolvedValue(trainsLocated);
+    const result = await liveTrainsHandler({ line: 'RD' }, fetcher as any);
+
+    const data = JSON.parse(result.content[0].text);
+    expect(data.trains[0].occupancy).toMatchObject({ status: 1, label: 'Many seats (<20% full)' });
+  });
+
+  it('omits occupancy key when not present on train', async () => {
+    const fetcher = jest.fn().mockResolvedValue(trainsLocated);
+    const result = await liveTrainsHandler({ line: 'RD' }, fetcher as any);
+
+    const data = JSON.parse(result.content[0].text);
+    expect(data.trains[1]).not.toHaveProperty('occupancy');
+  });
 });

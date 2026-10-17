@@ -51,6 +51,7 @@ async function ensureTtlIndexes() {
     'trainpositions',
     'adherencesnapshots',
     'elevatoroutages',
+    'railoccupancies',
   ];
 
   await Promise.all(

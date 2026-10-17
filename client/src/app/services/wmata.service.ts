@@ -21,6 +21,12 @@ export class WmataService {
     return this.http.get(`${this.base}/trains/live`);
   }
 
+  getLocatedTrains(line?: string): Observable<any> {
+    let params = new HttpParams();
+    if (line) params = params.set('line', line);
+    return this.http.get(`${this.base}/trains/located`, { params });
+  }
+
   getHistoricalTrains(from: string, to: string, line?: string): Observable<any> {
     let params = new HttpParams().set('from', from).set('to', to);
     if (line) params = params.set('line', line);
