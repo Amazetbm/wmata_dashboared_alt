@@ -133,6 +133,12 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
   histDrillDate: string | null = null;
   histFilteredRoute: string | null = null;
 
+  private readonly OCCUPANCY_COLORS: Record<number, string> = {
+    1: '#a6e3a1',  // green  — Many seats
+    2: '#fab387',  // orange — Few seats
+    5: '#f38ba8',  // red    — Full
+  };
+
   private map!: L.Map;
 
   // Static layers — built once on first load, new routes appended on refresh
@@ -142,6 +148,7 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
   // Dynamic layers — cleared and rebuilt on each refresh
   private busCluster!: any;
   private incidentHighlightLayer = L.layerGroup();
+  private occupancyBusLayer = L.layerGroup();
 
   // Search highlight — not in layer control, cleared on new search or clear
   private searchHighlightLayer = L.layerGroup();
@@ -233,12 +240,15 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
     this.searchHighlightLayer.addTo(this.map);
     this.incidentHighlightLayer.addTo(this.map);
     this.busCluster.addTo(this.map);
+    // Occupancy rings sit above bus markers so they're visible; not added to map by default
+    // (layer control toggles it on/off)
 
     L.control.layers(
       undefined,
       {
         'Route Polylines': this.routeLayer,
         'Bus Positions': this.busCluster,
+        'Occupancy': this.occupancyBusLayer,
         'Bus Stops': this.stopLayer,
         'Incident Highlights': this.incidentHighlightLayer,
       },
@@ -248,9 +258,11 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
     // Stop visibility: opacity toggled on zoomend (zoom ≥ 14 to show)
     this.map.on('overlayadd', (e: L.LayersControlEvent) => {
       if (e.name === 'Bus Stops') { this.stopsUserEnabled = true; this.updateStopVisibility(); }
+      if (e.name === 'Occupancy') { this.occupancyBusLayer.addTo(this.map); this.rebuildOccupancyBus(); }
     });
     this.map.on('overlayremove', (e: L.LayersControlEvent) => {
       if (e.name === 'Bus Stops') { this.stopsUserEnabled = false; this.updateStopVisibility(); }
+      if (e.name === 'Occupancy') { this.occupancyBusLayer.clearLayers(); }
     });
     this.map.on('zoomend', () => this.updateStopVisibility());
   }
@@ -400,6 +412,25 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
 
       this.busCluster.addLayer(marker);
     }
+
+    this.rebuildOccupancyBus();
+  }
+
+  private rebuildOccupancyBus(): void {
+    this.occupancyBusLayer.clearLayers();
+    if (!this.map.hasLayer(this.occupancyBusLayer)) return;
+
+    for (const bus of (this.busData?.positions || []) as any[]) {
+      if (!bus.Lat || !bus.Lon || !bus.occupancy) continue;
+      const ringColor = this.OCCUPANCY_COLORS[bus.occupancy.status] ?? '#a6adc8';
+      L.circleMarker([bus.Lat, bus.Lon] as L.LatLngExpression, {
+        radius: 10,
+        color: ringColor,
+        weight: 2,
+        fill: false,
+        interactive: false,
+      }).addTo(this.occupancyBusLayer);
+    }
   }
 
   private buildBusPopup(bus: any, color: string): HTMLElement {
@@ -418,11 +449,15 @@ export class BusMapComponent implements AfterViewInit, OnDestroy {
     chip.textContent = bus.RouteID || '?';
     routeRow.appendChild(chip);
     root.appendChild(routeRow);
-    for (const [label, value] of [
+    const popupRows: [string, string][] = [
       ['Destination', bus.TripHeadsign || '—'],
       ['Deviation', formatDeviation(bus.Deviation)],
       ['Last updated', bus.DateTime ? new Date(bus.DateTime).toLocaleTimeString() : '—'],
-    ] as [string, string][]) {
+    ];
+    if (bus.occupancy != null) {
+      popupRows.push(['Occupancy', bus.occupancy.label ?? `Status ${bus.occupancy.status}`]);
+    }
+    for (const [label, value] of popupRows) {
       const row = document.createElement('div');
       row.className = 'map-popup-detail';
       const strong = document.createElement('strong');

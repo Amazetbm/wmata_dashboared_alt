@@ -21,7 +21,9 @@ function decodeVehiclePositions(buffer) {
     .map(e => ({
       vehicleId:       e.vehicle.vehicle?.id         ?? null,
       vehicleLabel:    e.vehicle.vehicle?.label       ?? null,
-      occupancyStatus: e.vehicle.occupancyStatus      ?? 0,
+      occupancyStatus: Object.prototype.hasOwnProperty.call(e.vehicle, 'occupancyStatus')
+        ? e.vehicle.occupancyStatus
+        : null,
       lat:             e.vehicle.position?.latitude   ?? null,
       lon:             e.vehicle.position?.longitude  ?? null,
     }));

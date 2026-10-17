@@ -36,6 +36,7 @@ services:
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-30000}
       SNAPSHOT_RETENTION_DAYS: ${SNAPSHOT_RETENTION_DAYS:-90}
       GTFS_RAIL_OCCUPANCY: ${GTFS_RAIL_OCCUPANCY:-false}
+      GTFS_BUS_OCCUPANCY: ${GTFS_BUS_OCCUPANCY:-false}
     depends_on:
       mongo:
         condition: service_healthy

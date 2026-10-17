@@ -115,9 +115,11 @@ const TOOL_DEFINITIONS = [
   {
     name: 'get_bus_positions',
     description: 'Get current Metrobus positions from the latest 30-second snapshot. '
-      + 'With no filter, returns a per-route summary (totalBuses, top 20 routes by count). '
+      + 'With no filter, returns a per-route summary (totalBuses, top 20 routes by count); '
+      + 'each route may include a crowding breakdown {many, few, full, unknown} when the bus GTFS feed is enabled. '
       + 'With route_id, returns up to 50 individual bus records with lat/lon, direction, '
-      + 'headsign, and deviation (minutes late, positive = behind schedule). '
+      + 'headsign, deviation (minutes late, positive = behind schedule), and occupancy when available. '
+      + 'Bus occupancy bands differ from rail: Many seats = <25% full, Few seats = 25–49% full, Full = ≥50% full. '
       + 'Call show_on_map with action=focus_route for any specific route mentioned.',
     inputSchema: {
       type: 'object',

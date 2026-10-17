@@ -78,7 +78,7 @@ test('defaults to null for missing position fields', () => {
   expect(vehicles[0].lon).toBeNull();
 });
 
-test('defaults occupancyStatus to 0 when not present', () => {
+test('returns null occupancyStatus when not present on wire', () => {
   const buf = buildFeed({
     timestamp: 1700000000,
     entities: [
@@ -87,6 +87,23 @@ test('defaults occupancyStatus to 0 when not present', () => {
         vehicle: {
           vehicle: { id: 'V003' },
           // no occupancyStatus
+        },
+      },
+    ],
+  });
+  const { vehicles } = decodeVehiclePositions(buf);
+  expect(vehicles[0].occupancyStatus).toBeNull();
+});
+
+test('preserves explicit occupancyStatus 0 (EMPTY) as 0', () => {
+  const buf = buildFeed({
+    timestamp: 1700000000,
+    entities: [
+      {
+        id: 'e5',
+        vehicle: {
+          vehicle: { id: 'V005' },
+          occupancyStatus: 0,
         },
       },
     ],

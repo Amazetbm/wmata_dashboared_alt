@@ -58,6 +58,15 @@ describe('busPositionsHandler', () => {
     expect(data).not.toHaveProperty('routes');
   });
 
+  it('passes through occupancy field when present in fixture', async () => {
+    const fetcher = jest.fn().mockResolvedValue(routeSample);
+    const result = await busPositionsHandler({ route_id: '16Y' }, fetcher as any);
+
+    const data = JSON.parse(result.content[0].text);
+    expect(data.buses[0].occupancy).toEqual({ status: 2, label: 'Few seats (25–49% full)' });
+    expect(data.buses[1].occupancy).toBeNull();
+  });
+
   it('returns empty summary shape when snapshot is absent and no route_id', async () => {
     const fetcher = jest.fn().mockResolvedValue(emptySummary);
     const result = await busPositionsHandler({}, fetcher as any);
