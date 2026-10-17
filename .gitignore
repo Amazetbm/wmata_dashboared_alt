@@ -2,6 +2,7 @@ node_modules/
 server/node_modules/
 client/node_modules/
 mcp/dist/
+server/scripts/
 .env
 server/.env
 dist/

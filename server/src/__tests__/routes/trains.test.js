@@ -1,16 +1,24 @@
 'use strict';
 
 jest.mock('../../assistant/toolHandlers/getTrainPositions');
+jest.mock('../../models/RailOccupancy');
 
 const request = require('supertest');
 const express = require('express');
 const trainRoutes = require('../../routes/trains');
 const { getTrainPositions } = require('../../assistant/toolHandlers/getTrainPositions');
+const RailOccupancy = require('../../models/RailOccupancy');
 
 const app = express();
 app.use('/api/trains', trainRoutes);
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Default: RailOccupancy returns null (GTFS flag off by default)
+  RailOccupancy.findOne.mockReturnValue({
+    sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(null) }),
+  });
+});
 
 const sampleResult = {
   snapshotAt: '2026-10-12T14:00:00.000Z',
@@ -77,4 +85,21 @@ test('GET /api/trains/located returns 500 when handler throws', async () => {
 
   expect(res.status).toBe(500);
   expect(res.body.error).toBe('Internal server error');
+});
+
+// ── Occupancy pass-through (located) ─────────────────────────────────────────
+
+test('GET /api/trains/located passes occupancy field through when present', async () => {
+  const withOccupancy = {
+    ...sampleResult,
+    trains: [
+      { ...sampleResult.trains[0], occupancy: { status: 1, label: 'Many seats (<20% full)' } },
+    ],
+  };
+  getTrainPositions.mockResolvedValue(withOccupancy);
+
+  const res = await request(app).get('/api/trains/located');
+
+  expect(res.status).toBe(200);
+  expect(res.body.trains[0].occupancy).toMatchObject({ status: 1 });
 });

@@ -6,7 +6,11 @@ const ElevatorOutage = require('../models/ElevatorOutage');
 const AdherenceSnapshot = require('../models/AdherenceSnapshot');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
+const RailOccupancy = require('../models/RailOccupancy');
 const railGeometry = require('../lib/railGeometry');
+const { decodeVehiclePositions } = require('../lib/gtfsRt');
+
+const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
 
 function computeAdherence(trainPositions, standardRoutes) {
   const { circuitMap, routeLen } = railGeometry.buildRouteMaps(standardRoutes);
@@ -84,13 +88,16 @@ async function fetchAndStore() {
   const snapshotAt = new Date();
 
   try {
-    const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes] = await Promise.allSettled([
+    const feeds = [
       wmataClient.get('/Incidents.svc/json/Incidents'),
       wmataClient.get('/TrainPositions/TrainPositions?contentType=json'),
       wmataClient.get('/Incidents.svc/json/ElevatorIncidents'),
       wmataClient.get('/Bus.svc/json/jBusPositions'),
       wmataClient.get('/Incidents.svc/json/BusIncidents'),
-    ]);
+    ];
+    if (GTFS_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-vehiclepositions.pb', { responseType: 'arraybuffer' }));
+
+    const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes, gtfsRes] = await Promise.allSettled(feeds);
 
     if (incRes.status === 'fulfilled') {
       const incidents = (incRes.value.data.Incidents || []).map(i => ({ ...i, snapshotAt }));
@@ -128,6 +135,17 @@ async function fetchAndStore() {
       console.log(`[poller] Bus incidents from WMATA: ${busIncidents.length}`);
     } else {
       console.error('Bus incidents fetch error:', busIncidentsRes.reason?.message);
+    }
+
+    if (GTFS_ENABLED && gtfsRes?.status === 'fulfilled') {
+      try {
+        const { feedTimestamp, vehicles } = decodeVehiclePositions(gtfsRes.value.data);
+        await RailOccupancy.create({ snapshotAt, feedTimestamp, vehicles });
+      } catch (err) {
+        console.error('GTFS-RT decode/save error:', err.message);
+      }
+    } else if (GTFS_ENABLED && gtfsRes) {
+      console.error('GTFS-RT fetch error:', gtfsRes.reason?.message);
     }
 
     // Compute and persist adherence if we have train positions

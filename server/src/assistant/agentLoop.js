@@ -34,6 +34,7 @@ Tool usage guidelines:
 - Schedule adherence thresholds: on-time = deviation ≤10% of headway, minor = ≤25%, significant = >25%.
 - get_train_positions returns a location field ("at Gallery Place (B01)", "between X and Y") and a destination station name per train — use these when describing train positions, not raw adherence numbers.
 - get_bus_positions without route_id gives a fleet-wide overview (totalBuses + top routes). With route_id it returns per-vehicle lat/lon, direction, headsign, and deviation. Call show_on_map(focus_route, <route_id>) whenever a specific bus route is discussed.
+- get_train_positions may include an occupancy field per train (null = unavailable). Bands: Many seats = <20% full, Few seats = 20–32% full, Full = ≥33% full. Only mention crowding when occupancy is non-null.
 - Return concise, operator-focused language. Avoid raw JSON in your replies.`;
 }
 

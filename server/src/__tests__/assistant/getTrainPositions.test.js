@@ -1,9 +1,11 @@
 'use strict';
 
 jest.mock('../../models/AdherenceSnapshot');
+jest.mock('../../models/RailOccupancy');
 jest.mock('../../lib/railGeometry');
 
 const AdherenceSnapshot = require('../../models/AdherenceSnapshot');
+const RailOccupancy     = require('../../models/RailOccupancy');
 const railGeometry      = require('../../lib/railGeometry');
 const { getTrainPositions } = require('../../assistant/toolHandlers/getTrainPositions');
 
@@ -57,6 +59,13 @@ beforeEach(() => {
   AdherenceSnapshot.findOne.mockReturnValue({
     sort: jest.fn().mockReturnValue({
       lean: jest.fn().mockResolvedValue(snapshotDoc),
+    }),
+  });
+
+  // Default: no occupancy doc (GTFS_ENABLED=false by default in tests)
+  RailOccupancy.findOne.mockReturnValue({
+    sort: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue(null),
     }),
   });
 
@@ -174,4 +183,48 @@ test('preserves snapshotAt and summary at top level', async () => {
   expect(result.snapshotAt).toEqual(snapshotAt);
   expect(result.summary.total).toBe(2);
   expect(result.lineSummaries).toHaveLength(1);
+});
+
+test('does not add occupancy field when GTFS flag is off (default)', async () => {
+  const result = await getTrainPositions();
+  expect(result.trains[0]).not.toHaveProperty('occupancy');
+});
+
+test('passes through occupancy when GTFS flag is on and doc exists', async () => {
+  const origEnv = process.env.GTFS_RAIL_OCCUPANCY;
+  process.env.GTFS_RAIL_OCCUPANCY = 'true';
+  // Re-require to pick up changed env var
+  jest.resetModules();
+  jest.mock('../../models/AdherenceSnapshot');
+  jest.mock('../../models/RailOccupancy');
+  jest.mock('../../lib/railGeometry');
+  const AS2 = require('../../models/AdherenceSnapshot');
+  const RO2 = require('../../models/RailOccupancy');
+  const rg2 = require('../../lib/railGeometry');
+  const { getTrainPositions: gtp2 } = require('../../assistant/toolHandlers/getTrainPositions');
+
+  AS2.findOne.mockReturnValue({ sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(snapshotDoc) }) });
+  RO2.findOne.mockReturnValue({
+    sort: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue({
+        feedTimestamp: new Date(), // fresh
+        vehicles: [{ vehicleId: 'T1', occupancyStatus: 1 }],
+      }),
+    }),
+  });
+  rg2.getStations.mockResolvedValue(stationsMap);
+  rg2.getStandardRoutes.mockResolvedValue(standardRoutes);
+  rg2.buildCircuitStationBracketMap.mockReturnValue(bracketMap);
+  rg2.describeLocation.mockImplementation(entry => {
+    if (!entry) return 'unknown';
+    if (entry.atStation) return `at ${entry.atStation.name} (${entry.atStation.code})`;
+    if (entry.yard) return 'in yard';
+    return 'unknown';
+  });
+
+  const result = await gtp2();
+  const t1 = result.trains.find(t => t.trainId === 'T1');
+  expect(t1.occupancy).toMatchObject({ status: 1 });
+
+  process.env.GTFS_RAIL_OCCUPANCY = origEnv ?? '';
 });

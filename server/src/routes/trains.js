@@ -1,7 +1,11 @@
 const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const TrainPosition = require('../models/TrainPosition');
+const RailOccupancy = require('../models/RailOccupancy');
 const { getTrainPositions } = require('../assistant/toolHandlers/getTrainPositions');
+const { enrichTrainsWithOccupancy } = require('../lib/occupancyEnricher');
+
+const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
 
 const VALID_LINES = new Set(['RD', 'BL', 'OR', 'GR', 'YL', 'SV']);
 
@@ -24,7 +28,13 @@ router.get('/located', async (req, res) => {
 router.get('/live', async (req, res) => {
   try {
     const { data } = await wmataClient.get('/TrainPositions/TrainPositions?contentType=json');
-    res.json(data);
+    const trains = await enrichTrainsWithOccupancy(
+      data.TrainPositions ?? [],
+      'TrainId',
+      GTFS_ENABLED,
+      () => RailOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
+    );
+    res.json({ ...data, TrainPositions: trains });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

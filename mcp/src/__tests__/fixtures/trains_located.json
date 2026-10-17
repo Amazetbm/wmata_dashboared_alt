@@ -11,7 +11,8 @@
       "carCount": 8,
       "status": "on-time",
       "location": "at Metro Center (A01)",
-      "destination": "Shady Grove"
+      "destination": "Shady Grove",
+      "occupancy": { "status": 1, "label": "Many seats (<20% full)" }
     },
     {
       "trainId": "T124",

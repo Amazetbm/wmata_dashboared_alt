@@ -46,7 +46,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_train_positions',
-    description: 'Get current train positions from the latest 30-second snapshot. Returns per-train records with human-readable location (e.g. "between Farragut North (A02) and Metro Center (A01)"), destination station name, line, car count, and schedule adherence status (on-time/minor/significant). Also returns summary counts and per-line breakdowns. Consider filtering by line to keep responses focused.',
+    description: 'Get current train positions from the latest 30-second snapshot. Returns per-train records with human-readable location (e.g. "between Farragut North (A02) and Metro Center (A01)"), destination station name, line, car count, schedule adherence status (on-time/minor/significant), and occupancy when available. Occupancy bands: \'Many seats (<20% full)\', \'Few seats (20–32% full)\', \'Full (≥33% full)\'. Occupancy is null when the GTFS-RT feed is disabled or stale. Also returns summary counts and per-line breakdowns. Consider filtering by line to keep responses focused.',
     inputSchema: {
       type: 'object',
       properties: {

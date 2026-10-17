@@ -1,7 +1,11 @@
 'use strict';
 
 const AdherenceSnapshot = require('../../models/AdherenceSnapshot');
+const RailOccupancy = require('../../models/RailOccupancy');
 const railGeometry = require('../../lib/railGeometry');
+const { enrichTrainsWithOccupancy } = require('../../lib/occupancyEnricher');
+
+const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
 
 async function getTrainPositions({ line } = {}) {
   const snapshot = await AdherenceSnapshot.findOne().sort({ snapshotAt: -1 }).lean();
@@ -23,7 +27,7 @@ async function getTrainPositions({ line } = {}) {
   ]);
   const bracketMap = railGeometry.buildCircuitStationBracketMap(standardRoutes, stationsMap);
 
-  const enrichedTrains = (trains || []).map(t => ({
+  let enrichedTrains = (trains || []).map(t => ({
     trainId:     t.trainId,
     lineCode:    t.lineCode,
     carCount:    t.carCount,
@@ -31,6 +35,13 @@ async function getTrainPositions({ line } = {}) {
     location:    railGeometry.describeLocation(bracketMap[t.circuitId]),
     destination: stationsMap.get(t.destinationCode)?.Name ?? t.destinationCode ?? 'unknown',
   }));
+
+  enrichedTrains = await enrichTrainsWithOccupancy(
+    enrichedTrains,
+    'trainId',
+    GTFS_ENABLED,
+    () => RailOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
+  );
 
   return { snapshotAt, summary, lineSummaries, trains: enrichedTrains };
 }

@@ -47,6 +47,8 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
   private stationLayer = L.layerGroup();
   private trainLayer = L.layerGroup();
   private incidentLayer = L.layerGroup();
+  private occupancyLayer = L.layerGroup();
+  private occupancyVisible = true;
 
   // Shared incident index kept fresh by rebuildIncidents() so station popup factories read current data
   private incidentsByLine = new Map<string, any[]>();
@@ -93,16 +95,25 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
     this.stationLayer.addTo(this.map);
     this.trainLayer.addTo(this.map);
     this.incidentLayer.addTo(this.map);
+    this.occupancyLayer.addTo(this.map);
 
-    L.control.layers(
+    const layerControl = L.control.layers(
       undefined,
       {
         'Train Positions': this.trainLayer,
+        'Occupancy Status': this.occupancyLayer,
         'Stations': this.stationLayer,
         'Incident Highlights': this.incidentLayer,
       },
       { position: 'topright', collapsed: false }
     ).addTo(this.map);
+
+    this.map.on('overlayadd', (e: any) => {
+      if (e.name === 'Occupancy Status') this.occupancyVisible = true;
+    });
+    this.map.on('overlayremove', (e: any) => {
+      if (e.name === 'Occupancy Status') this.occupancyVisible = false;
+    });
   }
 
   private fetchAndRender(): void {
@@ -132,6 +143,7 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
         this.trainCount = data.trains?.length ?? 0;
         this.rebuildIncidents(); // updates incidentsByLine index first
         this.rebuildTrains();
+        this.rebuildOccupancy();
       },
       error: (err) => console.error('[map-panel refresh]', err),
     });
@@ -158,6 +170,7 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
     this.rebuildStations();
     this.rebuildIncidents();
     this.rebuildTrains();
+    this.rebuildOccupancy();
   }
 
   // ── Polylines ─────────────────────────────────────────────────────────────
@@ -333,7 +346,46 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
       root.appendChild(row);
     }
 
+    if (train.occupancy != null) {
+      const row = document.createElement('div');
+      row.className = 'map-popup-detail';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Crowding: ';
+      row.appendChild(strong);
+      row.appendChild(document.createTextNode(train.occupancy.label ?? `Status ${train.occupancy.status}`));
+      root.appendChild(row);
+    }
+
     return root;
+  }
+
+  // ── Occupancy rings ────────────────────────────────────────────────────────
+
+  private readonly OCCUPANCY_COLORS: Record<number, string> = {
+    1: '#a6e3a1', // green — Many seats
+    2: '#fab387', // orange — Few seats
+    5: '#f38ba8', // red — Full
+  };
+
+  private rebuildOccupancy(): void {
+    this.occupancyLayer.clearLayers();
+    const trains = this.cachedData.trains as any[];
+
+    for (const train of trains) {
+      if (this.selectedLine !== 'ALL' && train.LineCode !== this.selectedLine) continue;
+      if (train.occupancy == null) continue;
+
+      const ringColor = this.OCCUPANCY_COLORS[train.occupancy.status];
+      if (!ringColor) continue;
+
+      L.circleMarker([train.lat, train.lon] as L.LatLngExpression, {
+        radius: 10,
+        color: ringColor,
+        weight: 2,
+        fill: false,
+        interactive: false,
+      }).addTo(this.occupancyLayer);
+    }
   }
 
   // ── Incident highlights ────────────────────────────────────────────────────
