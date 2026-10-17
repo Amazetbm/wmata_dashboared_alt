@@ -28,6 +28,7 @@ function buildOccupancyMap(doc, labels = RAIL_OCCUPANCY_LABELS) {
   const map = new Map();
   if (!doc?.vehicles) return map;
   for (const v of doc.vehicles) {
+    if (v.occupancyStatus == null || v.occupancyStatus === 0 || v.occupancyStatus === 7) continue;
     if (v.vehicleId != null) {
       map.set(String(v.vehicleId).trim(), {
         status: v.occupancyStatus,

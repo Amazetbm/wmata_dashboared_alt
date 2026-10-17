@@ -2,7 +2,7 @@ node_modules/
 server/node_modules/
 client/node_modules/
 mcp/dist/
-server/scripts/
+server/scripts/verify-*.js
 .env
 server/.env
 dist/

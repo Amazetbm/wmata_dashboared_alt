@@ -58,6 +58,21 @@ test('buildOccupancyMap skips entries with null vehicleId', () => {
   expect(buildOccupancyMap(doc).size).toBe(0);
 });
 
+test('buildOccupancyMap skips null occupancyStatus', () => {
+  const doc = makeDoc([{ vehicleId: 'V1', occupancyStatus: null }]);
+  expect(buildOccupancyMap(doc).size).toBe(0);
+});
+
+test('buildOccupancyMap skips occupancyStatus 0 (EMPTY)', () => {
+  const doc = makeDoc([{ vehicleId: 'V1', occupancyStatus: 0 }]);
+  expect(buildOccupancyMap(doc).size).toBe(0);
+});
+
+test('buildOccupancyMap skips occupancyStatus 7 (NO_DATA_AVAILABLE)', () => {
+  const doc = makeDoc([{ vehicleId: 'V1', occupancyStatus: 7 }]);
+  expect(buildOccupancyMap(doc).size).toBe(0);
+});
+
 // ── enrichTrainsWithOccupancy — flag off ──────────────────────────────────────
 
 test('returns trains unchanged when enabled=false', async () => {

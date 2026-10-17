@@ -16,6 +16,10 @@ const GTFS_BUS_ENABLED  = process.env.GTFS_BUS_OCCUPANCY  === 'true';
 // Keep old name for any internal references below
 const GTFS_ENABLED = GTFS_RAIL_ENABLED;
 
+// State-change tracking for occupancy availability (null=unknown, true=available, false=unavailable)
+let railOccupancyAvailable = null;
+let busOccupancyAvailable  = null;
+
 function computeAdherence(trainPositions, standardRoutes) {
   const { circuitMap, routeLen } = railGeometry.buildRouteMaps(standardRoutes);
 
@@ -151,7 +155,21 @@ async function fetchAndStore() {
     if (GTFS_RAIL_ENABLED && gtfsRes?.status === 'fulfilled') {
       try {
         const { feedTimestamp, vehicles } = decodeVehiclePositions(gtfsRes.value.data);
-        await RailOccupancy.create({ snapshotAt, feedTimestamp, vehicles });
+        const hasUsefulData = vehicles.some(v => v.occupancyStatus != null
+          && v.occupancyStatus !== 0 && v.occupancyStatus !== 7);
+        if (hasUsefulData) {
+          if (railOccupancyAvailable !== true) {
+            console.log(`[poller] GTFS-RT rail occupancy now AVAILABLE (${vehicles.length} vehicles)`);
+            railOccupancyAvailable = true;
+          }
+          await RailOccupancy.create({ snapshotAt, feedTimestamp, vehicles });
+        } else {
+          if (railOccupancyAvailable !== false) {
+            const hist = vehicles.reduce((a, v) => { a[v.occupancyStatus ?? 'null'] = (a[v.occupancyStatus ?? 'null'] || 0) + 1; return a; }, {});
+            console.log(`[poller] GTFS-RT rail occupancy UNAVAILABLE — histogram: ${JSON.stringify(hist)} (${vehicles.length} vehicles)`);
+            railOccupancyAvailable = false;
+          }
+        }
       } catch (err) {
         console.error('GTFS-RT rail decode/save error:', err.message);
       }
@@ -162,14 +180,20 @@ async function fetchAndStore() {
     if (GTFS_BUS_ENABLED && gtfsBusRes?.status === 'fulfilled') {
       try {
         const { feedTimestamp, vehicles } = decodeVehiclePositions(gtfsBusRes.value.data);
-        // GTFS-RT status 7 = NO_DATA_AVAILABLE. Skip the DB write when every vehicle
-        // reports no data — avoids storing useless documents and keeps the enricher's
-        // null-doc path active (all buses get occupancy: null, same result, no overhead).
-        const hasUsefulData = vehicles.some(v => v.occupancyStatus !== 7 && v.occupancyStatus !== 0);
+        const hasUsefulData = vehicles.some(v => v.occupancyStatus != null
+          && v.occupancyStatus !== 0 && v.occupancyStatus !== 7);
         if (hasUsefulData) {
+          if (busOccupancyAvailable !== true) {
+            console.log(`[poller] GTFS-RT bus occupancy now AVAILABLE (${vehicles.length} vehicles)`);
+            busOccupancyAvailable = true;
+          }
           await BusOccupancy.create({ snapshotAt, feedTimestamp, vehicles });
         } else {
-          console.log(`[poller] GTFS-RT bus: all ${vehicles.length} vehicles report NO_DATA_AVAILABLE — skipping write`);
+          if (busOccupancyAvailable !== false) {
+            const hist = vehicles.reduce((a, v) => { a[v.occupancyStatus ?? 'null'] = (a[v.occupancyStatus ?? 'null'] || 0) + 1; return a; }, {});
+            console.log(`[poller] GTFS-RT bus occupancy UNAVAILABLE — histogram: ${JSON.stringify(hist)} (${vehicles.length} vehicles)`);
+            busOccupancyAvailable = false;
+          }
         }
       } catch (err) {
         console.error('GTFS-RT bus decode/save error:', err.message);

@@ -290,6 +290,17 @@ MCP_TRANSPORT=stdio node dist/index.js
 |---|---|---|
 | `SNAPSHOT_RETENTION_DAYS` | Days to retain rail incidents, train positions, adherence snapshots, and elevator outage records. Change requires server restart. | `90` |
 
+### GTFS-RT Occupancy (optional)
+
+| Variable | Description | Default |
+|---|---|---|
+| `GTFS_RAIL_OCCUPANCY` | Set to `true` to fetch and store rail vehicle occupancy from the WMATA GTFS-RT feed | `false` |
+| `GTFS_BUS_OCCUPANCY` | Set to `true` to fetch and store bus vehicle occupancy from the WMATA GTFS-RT feed | `false` |
+
+> **Note (October 2026):** WMATA's production bus GTFS-RT feed returns `occupancy_status = 7`
+> (NO_DATA_AVAILABLE) for all vehicles. Bus crowding will show as `null` until WMATA populates
+> the field. Use `node server/scripts/probeOccupancy.js bus` to check current feed status.
+
 **Example — Ollama (local):**
 ```env
 LLM_PROVIDER=openai-compatible
@@ -361,6 +372,8 @@ wmta_dashboard/
 │           └── bus_positions.ts      # Current bus positions by route
 ├── server/
 │   ├── Dockerfile
+│   ├── scripts/
+│   │   └── probeOccupancy.js         # One-shot GTFS-RT occupancy probe; usage: node server/scripts/probeOccupancy.js [rail|bus]
 │   └── src/
 │       ├── index.js                  # Express entry point, /health endpoint
 │       ├── middleware/
