@@ -19,11 +19,11 @@
 
   <!-- ═══════════════════════ LIVE VIEW ═══════════════════════════════ -->
   <ng-container *ngIf="view === 'live'">
-    <div *ngIf="loading" class="loading">Loading…</div>
-    <div *ngIf="error"   class="error">{{ error }}</div>
+    <div *ngIf="loading()" class="loading">Loading…</div>
+    <div *ngIf="error()"   class="error">{{ error() }}</div>
 
     <!-- Summary bar -->
-    <div class="summary-row" *ngIf="!loading">
+    <div class="summary-row" *ngIf="!loading()">
       <div class="stat-pill">
         <span class="stat-label">Total</span>
         <span class="stat-value">{{ liveSummary.total }}</span>
@@ -43,7 +43,7 @@
     </div>
 
     <!-- Live table -->
-    <div class="table-wrap" *ngIf="!loading && liveDisplayed.length > 0">
+    <div class="table-wrap" *ngIf="!loading() && liveDisplayed.length > 0">
       <table class="outage-table">
         <thead>
           <tr>
@@ -74,7 +74,7 @@
       </table>
     </div>
 
-    <div *ngIf="!loading && liveDisplayed.length === 0 && !error" class="empty">
+    <div *ngIf="!loading() && liveDisplayed.length === 0 && !error()" class="empty">
       No outages
       <ng-container *ngIf="typeFilter !== 'ALL'"> for type {{ typeFilter }}</ng-container>
       <ng-container *ngIf="stationSearch"> matching &ldquo;{{ stationSearch }}&rdquo;</ng-container>.
@@ -94,17 +94,17 @@
       <ng-container *ngIf="histPreset === 'custom'">
         <label>From: <input type="datetime-local" [(ngModel)]="histFrom" /></label>
         <label>To:   <input type="datetime-local" [(ngModel)]="histTo" /></label>
-        <button class="fetch-btn" (click)="fetchHistory()" [disabled]="histLoading">
-          {{ histLoading ? 'Loading…' : 'Fetch' }}
+        <button class="fetch-btn" (click)="fetchHistory()" [disabled]="histLoading()">
+          {{ histLoading() ? 'Loading…' : 'Fetch' }}
         </button>
       </ng-container>
-      <span *ngIf="histLoading && histPreset !== 'custom'" class="hist-loading">Loading…</span>
+      <span *ngIf="histLoading() && histPreset !== 'custom'" class="hist-loading">Loading…</span>
     </div>
 
-    <div *ngIf="histError" class="error">{{ histError }}</div>
+    <div *ngIf="histError()" class="error">{{ histError() }}</div>
 
     <!-- Bar chart: elevator + escalator counts per day -->
-    <div class="hist-chart-wrap" *ngIf="histChartData.length > 0">
+    <div class="hist-chart-wrap" *ngIf="histChartData().length > 0">
       <canvas #outageChartCanvas></canvas>
     </div>
 
@@ -145,7 +145,7 @@
       </div>
     </div>
 
-    <div *ngIf="!histLoading && histDisplayed.length === 0 && hasFetched" class="empty">
+    <div *ngIf="!histLoading() && histDisplayed.length === 0 && hasFetched()" class="empty">
       No outages in selected range<ng-container *ngIf="typeFilter !== 'ALL' || stationSearch"> for current filters</ng-container>.
     </div>
 

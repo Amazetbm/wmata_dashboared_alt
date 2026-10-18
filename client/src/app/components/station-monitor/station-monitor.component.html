@@ -5,9 +5,9 @@
       <option *ngFor="let s of stations" [value]="s.code">{{ s.name }}</option>
     </select>
   </div>
-  <div *ngIf="loading" class="loading">Loading...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
-  <table *ngIf="!loading && predictions.length > 0" class="predictions-table">
+  <div *ngIf="loading()" class="loading">Loading...</div>
+  <div *ngIf="error()" class="error">{{ error() }}</div>
+  <table *ngIf="!loading() && predictions().length > 0" class="predictions-table">
     <thead>
       <tr>
         <th>Line</th>
@@ -17,7 +17,7 @@
       </tr>
     </thead>
     <tbody>
-      <tr *ngFor="let p of predictions">
+      <tr *ngFor="let p of predictions()">
         <td><span class="line-badge" [attr.data-line]="p.Line">{{ p.Line }}</span></td>
         <td>{{ p.DestinationName }}</td>
         <td>{{ p.Car || '—' }}</td>
@@ -25,5 +25,5 @@
       </tr>
     </tbody>
   </table>
-  <div *ngIf="!loading && predictions.length === 0 && !error" class="empty">No predictions available.</div>
+  <div *ngIf="!loading() && predictions().length === 0 && !error()" class="empty">No predictions available.</div>
 </div>

@@ -1,7 +1,10 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, DestroyRef, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subject, merge, of, timer, EMPTY } from 'rxjs';
+import { switchMap, catchError } from 'rxjs/operators';
 
 const STATIONS: { code: string; name: string }[] = [
   // ── Red Line ────────────────────────────────────────────────────────────────
@@ -126,44 +129,34 @@ const STATIONS: { code: string; name: string }[] = [
   templateUrl: './station-monitor.component.html',
   styleUrl: './station-monitor.component.scss'
 })
-export class StationMonitorComponent implements OnInit, OnDestroy {
+export class StationMonitorComponent implements OnInit {
   stations = STATIONS;
   selectedCode = 'A01';
-  predictions: any[] = [];
-  loading = false;
-  error = '';
-  private timer: any;
+  predictions = signal<any[]>([]);
+  loading = signal(false);
+  error = signal('');
+  private trigger$ = new Subject<void>();
+  private destroyRef = inject(DestroyRef);
 
   constructor(private wmata: WmataService) {}
 
   ngOnInit() {
-    this.load();
-    this.timer = setInterval(() => this.load(), 30000);
-  }
-
-  ngOnDestroy() {
-    clearInterval(this.timer);
-  }
-
-  load() {
-    this.loading = true;
-    this.wmata.getPredictions(this.selectedCode).subscribe({
-      next: data => {
-        this.predictions = data.Trains || [];
-        this.loading = false;
-        this.error = '';
-      },
-      error: err => {
-        this.error = err.message;
-        this.loading = false;
-      }
+    merge(of(void 0), timer(30_000, 30_000), this.trigger$).pipe(
+      switchMap(() => {
+        this.loading.set(true);
+        return this.wmata.getPredictions(this.selectedCode).pipe(
+          catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
+        );
+      }),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(data => {
+      this.predictions.set(data.Trains || []);
+      this.loading.set(false);
+      this.error.set('');
     });
   }
 
-  onStationChange() {
-    this.predictions = [];
-    this.load();
-  }
+  onStationChange() { this.trigger$.next(); }
 
   minuteClass(min: string): string {
     if (min === 'ARR') return 'arr';

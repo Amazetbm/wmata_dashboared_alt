@@ -1,8 +1,11 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, DestroyRef, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
 import { Chart, registerables } from 'chart.js';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { timer, EMPTY } from 'rxjs';
+import { switchMap, catchError } from 'rxjs/operators';
 
 Chart.register(...registerables);
 
@@ -44,41 +47,44 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   lineColors = LINE_COLORS;
 
   // ── Live ────────────────────────────────────────────────────────────
-  allTrains: TrainAdherence[] = [];
-  filtered: TrainAdherence[] = [];
-  summary: Summary = { total: 0, onTime: 0, minor: 0, significant: 0 };
-  loading = true;
-  error = '';
-  snapshotAt: string | null = null;
-  private liveTimer: any;
+  allTrains = signal<TrainAdherence[]>([]);
+  filtered = signal<TrainAdherence[]>([]);
+  summary = signal<Summary>({ total: 0, onTime: 0, minor: 0, significant: 0 });
+  loading = signal(true);
+  error = signal('');
+  snapshotAt = signal<string | null>(null);
+  private destroyRef = inject(DestroyRef);
 
   // ── Historical ──────────────────────────────────────────────────────
   preset: Preset = '3h';
   from = '';
   to = '';
-  histLoading = false;
-  histError = '';
-  histSnapshots: HistSnap[] = [];
-  buckets: BucketPoint[] = [];
-  hasFetched = false;
+  histLoading = signal(false);
+  histError = signal('');
+  histSnapshots = signal<HistSnap[]>([]);
+  buckets = signal<BucketPoint[]>([]);
+  hasFetched = signal(false);
 
   get avgOnTimePct(): number {
-    if (!this.buckets.length) return 0;
-    return Math.round(this.buckets.reduce((a, b) => a + b.onTimePct, 0) / this.buckets.length);
+    const b = this.buckets();
+    if (!b.length) return 0;
+    return Math.round(b.reduce((a, x) => a + x.onTimePct, 0) / b.length);
   }
   get worstBucket(): BucketPoint | null {
-    if (!this.buckets.length) return null;
-    return this.buckets.reduce((min, b) => b.onTimePct < min.onTimePct ? b : min);
+    const b = this.buckets();
+    if (!b.length) return null;
+    return b.reduce((min, x) => x.onTimePct < min.onTimePct ? x : min);
   }
   get bestBucket(): BucketPoint | null {
-    if (!this.buckets.length) return null;
-    return this.buckets.reduce((max, b) => b.onTimePct > max.onTimePct ? b : max);
+    const b = this.buckets();
+    if (!b.length) return null;
+    return b.reduce((max, x) => x.onTimePct > max.onTimePct ? x : max);
   }
 
   // ── Drill-down ──────────────────────────────────────────────────────
-  drillBucket: BucketPoint | null = null;
-  drillTrains: TrainAdherence[] = [];
-  drillLoading = false;
+  drillBucket = signal<BucketPoint | null>(null);
+  drillTrains = signal<TrainAdherence[]>([]);
+  drillLoading = signal(false);
 
   // ── Chart ───────────────────────────────────────────────────────────
   @ViewChild('chartCanvas') chartCanvas!: ElementRef<HTMLCanvasElement>;
@@ -87,36 +93,32 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   constructor(private wmata: WmataService) {}
 
   ngOnInit() {
-    this.load();
-    this.liveTimer = setInterval(() => this.load(), 30000);
+    timer(0, 30_000).pipe(
+      switchMap(() => this.wmata.getLiveAdherence().pipe(
+        catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
+      )),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(data => {
+      this.allTrains.set(data.trains || []);
+      this.summary.set(data.summary || { total: 0, onTime: 0, minor: 0, significant: 0 });
+      this.snapshotAt.set(data.snapshotAt || null);
+      this.applyFilter();
+      this.loading.set(false);
+      this.error.set('');
+    });
     this.setPresetDates('3h');
   }
 
   ngOnDestroy() {
-    clearInterval(this.liveTimer);
     this.chart?.destroy();
   }
 
   // ── Live ────────────────────────────────────────────────────────────
 
-  load() {
-    this.wmata.getLiveAdherence().subscribe({
-      next: data => {
-        this.allTrains = data.trains || [];
-        this.summary = data.summary || { total: 0, onTime: 0, minor: 0, significant: 0 };
-        this.snapshotAt = data.snapshotAt || null;
-        this.applyFilter();
-        this.loading = false;
-        this.error = '';
-      },
-      error: err => { this.error = err.message; this.loading = false; }
-    });
-  }
-
   applyFilter() {
-    this.filtered = this.selectedLine
-      ? this.allTrains.filter(t => t.lineCode === this.selectedLine)
-      : this.allTrains;
+    this.filtered.set(this.selectedLine
+      ? this.allTrains().filter(t => t.lineCode === this.selectedLine)
+      : this.allTrains());
   }
 
   // ── View switching ──────────────────────────────────────────────────
@@ -124,7 +126,7 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   switchView(v: View) {
     this.view = v;
     if (v === 'historical') {
-      if (!this.hasFetched) {
+      if (!this.hasFetched()) {
         this.fetchHistory();
       } else {
         setTimeout(() => this.updateChart(), 0);
@@ -165,10 +167,10 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
 
   fetchHistory() {
     if (!this.from || !this.to) return;
-    this.histLoading = true;
-    this.histError = '';
-    this.drillBucket = null;
-    this.drillTrains = [];
+    this.histLoading.set(true);
+    this.histError.set('');
+    this.drillBucket.set(null);
+    this.drillTrains.set([]);
 
     this.wmata.getHistoricalAdherence(
       new Date(this.from).toISOString(),
@@ -176,13 +178,14 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
       this.selectedLine || undefined
     ).subscribe({
       next: data => {
-        this.histSnapshots = Array.isArray(data) ? data : [];
-        this.buckets = this.buildBuckets(this.histSnapshots);
-        this.hasFetched = true;
-        this.histLoading = false;
+        const snaps = Array.isArray(data) ? data : [];
+        this.histSnapshots.set(snaps);
+        this.buckets.set(this.buildBuckets(snaps));
+        this.hasFetched.set(true);
+        this.histLoading.set(false);
         setTimeout(() => this.updateChart(), 0);
       },
-      error: err => { this.histError = err.message; this.histLoading = false; }
+      error: err => { this.histError.set(err.message); this.histLoading.set(false); }
     });
   }
 
@@ -238,15 +241,16 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   private initChart() {
     if (!this.chartCanvas) return;
     const ctx = this.chartCanvas.nativeElement.getContext('2d')!;
+    const b = this.buckets();
 
     this.chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: this.buckets.map(b => b.label),
+        labels: b.map(x => x.label),
         datasets: [
           {
             label: 'On-time',
-            data: this.buckets.map(b => b.onTimePct),
+            data: b.map(x => x.onTimePct),
             fill: true,
             backgroundColor: 'rgba(166,227,161,0.55)',
             borderColor: '#a6e3a1',
@@ -257,7 +261,7 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
           },
           {
             label: 'Minor',
-            data: this.buckets.map(b => b.minorPct),
+            data: b.map(x => x.minorPct),
             fill: '-1',
             backgroundColor: 'rgba(249,226,175,0.65)',
             borderColor: '#f9e2af',
@@ -268,7 +272,7 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
           },
           {
             label: 'Significant',
-            data: this.buckets.map(b => b.significantPct),
+            data: b.map(x => x.significantPct),
             fill: '-1',
             backgroundColor: 'rgba(243,139,168,0.7)',
             borderColor: '#f38ba8',
@@ -309,10 +313,11 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
             callbacks: {
               label: (ctx) => {
                 const idx = ctx.dataIndex;
+                const buckets = this.buckets();
                 const pcts = [
-                  this.buckets[idx]?.onTimePct,
-                  this.buckets[idx]?.minorPct,
-                  this.buckets[idx]?.significantPct,
+                  buckets[idx]?.onTimePct,
+                  buckets[idx]?.minorPct,
+                  buckets[idx]?.significantPct,
                 ];
                 return `${ctx.dataset.label}: ${pcts[ctx.datasetIndex] ?? ctx.parsed.y}%`;
               }
@@ -328,11 +333,12 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
 
   private updateChart() {
     if (!this.chartCanvas) return;
+    const b = this.buckets();
     if (this.chart) {
-      this.chart.data.labels = this.buckets.map(b => b.label);
-      this.chart.data.datasets[0].data = this.buckets.map(b => b.onTimePct);
-      this.chart.data.datasets[1].data = this.buckets.map(b => b.minorPct);
-      this.chart.data.datasets[2].data = this.buckets.map(b => b.significantPct);
+      this.chart.data.labels = b.map(x => x.label);
+      this.chart.data.datasets[0].data = b.map(x => x.onTimePct);
+      this.chart.data.datasets[1].data = b.map(x => x.minorPct);
+      this.chart.data.datasets[2].data = b.map(x => x.significantPct);
       this.chart.update();
     } else {
       this.initChart();
@@ -342,27 +348,27 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   // ── Drill-down ──────────────────────────────────────────────────────
 
   onChartClick(idx: number) {
-    const bucket = this.buckets[idx];
+    const bucket = this.buckets()[idx];
     if (!bucket) return;
-    this.drillBucket = bucket;
-    this.drillLoading = true;
-    this.drillTrains = [];
+    this.drillBucket.set(bucket);
+    this.drillLoading.set(true);
+    this.drillTrains.set([]);
 
     const mid = new Date((bucket.fromTs.getTime() + bucket.toTs.getTime()) / 2).toISOString();
     this.wmata.getAdherenceSnapshot(mid).subscribe({
       next: (data: any) => {
         let trains: TrainAdherence[] = data?.trains || [];
         if (this.selectedLine) trains = trains.filter(t => t.lineCode === this.selectedLine);
-        this.drillTrains = [...trains].sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation));
-        this.drillLoading = false;
+        this.drillTrains.set([...trains].sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation)));
+        this.drillLoading.set(false);
       },
-      error: () => { this.drillLoading = false; }
+      error: () => { this.drillLoading.set(false); }
     });
   }
 
   closeDrill() {
-    this.drillBucket = null;
-    this.drillTrains = [];
+    this.drillBucket.set(null);
+    this.drillTrains.set([]);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────
@@ -370,7 +376,8 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   colorFor(line: string): string { return this.lineColors[line] || '#888'; }
 
   pct(n: number): number {
-    return this.summary.total > 0 ? Math.round((n / this.summary.total) * 100) : 0;
+    const s = this.summary();
+    return s.total > 0 ? Math.round((n / s.total) * 100) : 0;
   }
 
   deviationLabel(dev: number): string {
@@ -379,6 +386,6 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   }
 
   sortedFiltered(): TrainAdherence[] {
-    return [...this.filtered].sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation));
+    return [...this.filtered()].sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation));
   }
 }

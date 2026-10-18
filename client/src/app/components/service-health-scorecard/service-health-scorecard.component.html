@@ -1,15 +1,15 @@
 <div class="panel">
   <div class="panel-header">
     <h2>Service Health</h2>
-    <span class="last-updated" *ngIf="lastUpdated">Updated {{ secondsAgo() }}s ago</span>
+    <span class="last-updated" *ngIf="lastUpdated()">Updated {{ secondsAgo() }}s ago</span>
   </div>
 
-  <div *ngIf="loading" class="loading">Loading...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
+  <div *ngIf="loading()" class="loading">Loading...</div>
+  <div *ngIf="error()" class="error">{{ error() }}</div>
 
-  <div *ngIf="!loading && !error" class="scorecard-row">
+  <div *ngIf="!loading() && !error()" class="scorecard-row">
     <div
-      *ngFor="let line of lineScores"
+      *ngFor="let line of lineScores()"
       class="line-card"
       [class.status-good]="line.status === 'good'"
       [class.status-minor]="line.status === 'minor'"
