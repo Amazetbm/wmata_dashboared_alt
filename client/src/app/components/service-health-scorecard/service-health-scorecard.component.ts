@@ -1,7 +1,10 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, DestroyRef, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { forkJoin } from 'rxjs';
 import { WmataService } from '../../services/wmata.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { timer, EMPTY } from 'rxjs';
+import { switchMap, catchError } from 'rxjs/operators';
 
 const LINE_COLORS: Record<string, string> = {
   RD: '#BF0000', BL: '#009CDE', YL: '#FFD700',
@@ -75,40 +78,30 @@ interface LineScore {
   templateUrl: './service-health-scorecard.component.html',
   styleUrl: './service-health-scorecard.component.scss'
 })
-export class ServiceHealthScorecardComponent implements OnInit, OnDestroy {
-  lineScores: LineScore[] = [];
-  loading = true;
-  error = '';
-  lastUpdated: Date | null = null;
-  private timer: any;
+export class ServiceHealthScorecardComponent implements OnInit {
+  lineScores = signal<LineScore[]>([]);
+  loading = signal(true);
+  error = signal('');
+  lastUpdated = signal<Date | null>(null);
+  private destroyRef = inject(DestroyRef);
 
   constructor(private wmata: WmataService) {}
 
   ngOnInit() {
-    this.load();
-    this.timer = setInterval(() => this.load(), 30000);
-  }
-
-  ngOnDestroy() {
-    clearInterval(this.timer);
-  }
-
-  load() {
-    forkJoin([
-      this.wmata.getLiveAdherence(),
-      this.wmata.getLiveIncidents(),
-      this.wmata.getLiveOutages(),
-    ]).subscribe({
-      next: ([adherenceData, incidentData, outageData]) => {
-        this.lineScores = this.buildScores(adherenceData, incidentData, outageData);
-        this.lastUpdated = new Date();
-        this.loading = false;
-        this.error = '';
-      },
-      error: err => {
-        this.error = err.message;
-        this.loading = false;
-      }
+    timer(0, 30_000).pipe(
+      switchMap(() => forkJoin([
+        this.wmata.getLiveAdherence(),
+        this.wmata.getLiveIncidents(),
+        this.wmata.getLiveOutages(),
+      ]).pipe(
+        catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
+      )),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(([adherenceData, incidentData, outageData]) => {
+      this.lineScores.set(this.buildScores(adherenceData, incidentData, outageData));
+      this.lastUpdated.set(new Date());
+      this.loading.set(false);
+      this.error.set('');
     });
   }
 
@@ -176,7 +169,8 @@ export class ServiceHealthScorecardComponent implements OnInit, OnDestroy {
   }
 
   secondsAgo(): number {
-    if (!this.lastUpdated) return 0;
-    return Math.round((Date.now() - this.lastUpdated.getTime()) / 1000);
+    const lu = this.lastUpdated();
+    if (!lu) return 0;
+    return Math.round((Date.now() - lu.getTime()) / 1000);
   }
 }

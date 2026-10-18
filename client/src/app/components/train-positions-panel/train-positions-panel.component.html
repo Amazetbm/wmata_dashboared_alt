@@ -6,11 +6,11 @@
       <option value="">All Lines</option>
       <option *ngFor="let l of lines.slice(1)" [value]="l">{{ l }}</option>
     </select>
-    <span class="count">{{ filtered.length }} trains</span>
+    <span class="count">{{ filtered().length }} trains</span>
   </div>
-  <div *ngIf="loading" class="loading">Loading...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
-  <table *ngIf="!loading && filtered.length" class="train-table">
+  <div *ngIf="loading()" class="loading">Loading...</div>
+  <div *ngIf="error()" class="error">{{ error() }}</div>
+  <table *ngIf="!loading() && filtered().length" class="train-table">
     <thead>
       <tr>
         <th>Train</th>
@@ -23,7 +23,7 @@
       </tr>
     </thead>
     <tbody>
-      @for (train of filtered; track train.trainId) {
+      @for (train of filtered(); track train.trainId) {
         <tr>
           <td class="train-id">{{ train.trainId }}</td>
           <td>

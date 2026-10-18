@@ -1,8 +1,11 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, DestroyRef, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
 import { Chart, registerables } from 'chart.js';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { timer, EMPTY } from 'rxjs';
+import { switchMap, catchError } from 'rxjs/operators';
 
 Chart.register(...registerables);
 
@@ -43,37 +46,38 @@ export class OutagePanelComponent implements OnInit, OnDestroy {
   stationSearch = '';
 
   // ── Live ────────────────────────────────────────────────────────────
-  outages: OutageRecord[] = [];
-  loading = true;
-  error = '';
-  private liveTimer: any;
+  outages = signal<OutageRecord[]>([]);
+  loading = signal(true);
+  error = signal('');
+  private destroyRef = inject(DestroyRef);
 
   get liveSummary() {
-    const adaCount = new Set(this.outages.filter(o => o.adaConcern).map(o => o.StationCode)).size;
+    const o = this.outages();
+    const adaCount = new Set(o.filter(x => x.adaConcern).map(x => x.StationCode)).size;
     return {
-      total:      this.outages.length,
-      elevators:  this.outages.filter(o => o.UnitType === 'ELEVATOR').length,
-      escalators: this.outages.filter(o => o.UnitType === 'ESCALATOR').length,
+      total:      o.length,
+      elevators:  o.filter(x => x.UnitType === 'ELEVATOR').length,
+      escalators: o.filter(x => x.UnitType === 'ESCALATOR').length,
       adaStations: adaCount,
     };
   }
 
   get liveDisplayed(): OutageRecord[] {
-    return this.sortOutages(this.applyFilters(this.outages));
+    return this.sortOutages(this.applyFilters(this.outages()));
   }
 
   // ── Historical ──────────────────────────────────────────────────────
   histPreset: HistPreset = '24h';
   histFrom = '';
   histTo = '';
-  histLoading = false;
-  histError = '';
-  histOutages: OutageRecord[] = [];
-  histChartData: ChartPoint[] = [];
-  hasFetched = false;
+  histLoading = signal(false);
+  histError = signal('');
+  histOutages = signal<OutageRecord[]>([]);
+  histChartData = signal<ChartPoint[]>([]);
+  hasFetched = signal(false);
 
   get histDisplayed(): OutageRecord[] {
-    return this.sortOutages(this.applyFilters(this.histOutages));
+    return this.sortOutages(this.applyFilters(this.histOutages()));
   }
 
   @ViewChild('outageChartCanvas') chartCanvas!: ElementRef<HTMLCanvasElement>;
@@ -83,27 +87,21 @@ export class OutagePanelComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.setHistPresetDates('24h');
-    this.loadLive();
-    this.liveTimer = setInterval(() => this.loadLive(), 30000);
+    timer(0, 30_000).pipe(
+      switchMap(() => this.wmata.getLiveOutages().pipe(
+        catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
+      )),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe((raw: any[]) => {
+      const ada = this.computeAdaSet(raw);
+      this.outages.set(raw.map(o => this.enrich(o, ada.has(o.StationCode))));
+      this.loading.set(false);
+      this.error.set('');
+    });
   }
 
   ngOnDestroy() {
-    clearInterval(this.liveTimer);
     this.chart?.destroy();
-  }
-
-  // ── Live ────────────────────────────────────────────────────────────
-
-  loadLive() {
-    this.wmata.getLiveOutages().subscribe({
-      next: (raw: any[]) => {
-        const ada = this.computeAdaSet(raw);
-        this.outages = raw.map(o => this.enrich(o, ada.has(o.StationCode)));
-        this.loading = false;
-        this.error = '';
-      },
-      error: err => { this.error = err.message; this.loading = false; }
-    });
   }
 
   // ── View switching ──────────────────────────────────────────────────
@@ -111,7 +109,7 @@ export class OutagePanelComponent implements OnInit, OnDestroy {
   switchView(v: View) {
     this.view = v;
     if (v === 'historical') {
-      if (!this.hasFetched) {
+      if (!this.hasFetched()) {
         this.fetchHistory();
       } else {
         setTimeout(() => this.updateChart(), 0);
@@ -142,23 +140,23 @@ export class OutagePanelComponent implements OnInit, OnDestroy {
 
   fetchHistory() {
     if (!this.histFrom || !this.histTo) return;
-    this.histLoading = true;
-    this.histError = '';
+    this.histLoading.set(true);
+    this.histError.set('');
 
     this.wmata.getOutageHistory(
       new Date(this.histFrom).toISOString(),
       new Date(this.histTo).toISOString(),
     ).subscribe({
       next: (data: any) => {
-        this.histOutages = (data.outages || []).map((o: any) =>
+        this.histOutages.set((data.outages || []).map((o: any) =>
           this.enrich(o, o.adaConcern ?? false)
-        );
-        this.histChartData = data.chartData || [];
-        this.hasFetched = true;
-        this.histLoading = false;
+        ));
+        this.histChartData.set(data.chartData || []);
+        this.hasFetched.set(true);
+        this.histLoading.set(false);
         setTimeout(() => this.updateChart(), 0);
       },
-      error: err => { this.histError = err.message; this.histLoading = false; }
+      error: err => { this.histError.set(err.message); this.histLoading.set(false); }
     });
   }
 
@@ -167,21 +165,22 @@ export class OutagePanelComponent implements OnInit, OnDestroy {
   private initChart() {
     if (!this.chartCanvas) return;
     const ctx = this.chartCanvas.nativeElement.getContext('2d')!;
+    const chartData = this.histChartData();
     this.chart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: this.histChartData.map(d => d.date),
+        labels: chartData.map(d => d.date),
         datasets: [
           {
             label: 'Elevators',
-            data: this.histChartData.map(d => d.elevators),
+            data: chartData.map(d => d.elevators),
             backgroundColor: 'rgba(137,180,250,0.8)',
             borderColor: '#89b4fa',
             borderWidth: 1,
           },
           {
             label: 'Escalators',
-            data: this.histChartData.map(d => d.escalators),
+            data: chartData.map(d => d.escalators),
             backgroundColor: 'rgba(249,226,175,0.8)',
             borderColor: '#f9e2af',
             borderWidth: 1,
@@ -217,10 +216,11 @@ export class OutagePanelComponent implements OnInit, OnDestroy {
 
   private updateChart() {
     if (!this.chartCanvas) return;
+    const chartData = this.histChartData();
     if (this.chart) {
-      this.chart.data.labels = this.histChartData.map(d => d.date);
-      this.chart.data.datasets[0].data = this.histChartData.map(d => d.elevators);
-      this.chart.data.datasets[1].data = this.histChartData.map(d => d.escalators);
+      this.chart.data.labels = chartData.map(d => d.date);
+      this.chart.data.datasets[0].data = chartData.map(d => d.elevators);
+      this.chart.data.datasets[1].data = chartData.map(d => d.escalators);
       this.chart.update();
     } else {
       this.initChart();
