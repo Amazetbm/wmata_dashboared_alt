@@ -3,13 +3,14 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideHttpClient } from '@angular/common/http';
 import { IncidentsPanelComponent } from './incidents-panel.component';
 import { WmataService } from '../../services/wmata.service';
+import { makeIncident } from '../../../testing/api-fixtures';
 
 describe('IncidentsPanelComponent', () => {
   let fixture: ComponentFixture<IncidentsPanelComponent>;
   let httpMock: HttpTestingController;
 
   beforeEach(async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
 
     await TestBed.configureTestingModule({
       imports: [IncidentsPanelComponent],
@@ -17,6 +18,7 @@ describe('IncidentsPanelComponent', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(IncidentsPanelComponent);
+    fixture.autoDetectChanges();
     httpMock = TestBed.inject(HttpTestingController);
   });
 
@@ -25,32 +27,64 @@ describe('IncidentsPanelComponent', () => {
     httpMock.verify();
   });
 
-  it('re-renders when timer fires and new HTTP response arrives', () => {
-    fixture.detectChanges(); // ngOnInit → subscribes to timer(0, 30_000)
-    vi.advanceTimersByTime(0); // fires timer(0) → switchMap → req1
+  it('renders incident cards on initial load', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/incidents/live');
+    req.flush({ Incidents: [makeIncident()] });
+    await vi.advanceTimersByTimeAsync(0);
 
-    const req1 = httpMock.expectOne('/api/incidents/live');
-    req1.flush({ Incidents: [{ IncidentType: 'Delay', Description: 'Red Line delays', LinesAffected: 'RD;', PassengerDelay: 5, DateUpdated: '' }] });
-
-    fixture.detectChanges();
-
-    let cards = fixture.nativeElement.querySelectorAll('.incident-card');
+    const cards = fixture.nativeElement.querySelectorAll('.incident-card');
     expect(cards.length).toBe(1);
+  });
 
-    // Advance 30 s → timer ticks → req2 fires
-    vi.advanceTimersByTime(30_000);
+  it('shows empty state when no incidents', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/incidents/live');
+    req.flush({ Incidents: [] });
+    await vi.advanceTimersByTimeAsync(0);
 
+    const cards = fixture.nativeElement.querySelectorAll('.incident-card');
+    expect(cards.length).toBe(0);
+  });
+
+  it('re-renders with new data on 30 s refresh', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req1 = httpMock.expectOne('/api/incidents/live');
+    req1.flush({ Incidents: [makeIncident()] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fixture.nativeElement.querySelectorAll('.incident-card').length).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
     const req2 = httpMock.expectOne('/api/incidents/live');
-    req2.flush({
-      Incidents: [
-        { IncidentType: 'Delay', Description: 'Red Line delays', LinesAffected: 'RD;', PassengerDelay: 5, DateUpdated: '' },
-        { IncidentType: 'Alert', Description: 'Blue Line alert', LinesAffected: 'BL;', PassengerDelay: 0, DateUpdated: '' },
-      ]
-    });
+    req2.flush({ Incidents: [makeIncident(), makeIncident({ LinesAffected: 'BL;' })] });
+    await vi.advanceTimersByTimeAsync(0);
 
-    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.incident-card').length).toBe(2);
+  });
 
-    cards = fixture.nativeElement.querySelectorAll('.incident-card');
-    expect(cards.length).toBe(2);
+  it('sets error signal on HTTP error', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/incidents/live');
+    req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fixture.componentInstance.error()).toBeTruthy();
+  });
+
+  it('clears error on subsequent success', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req1 = httpMock.expectOne('/api/incidents/live');
+    req1.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fixture.componentInstance.error()).toBeTruthy();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const req2 = httpMock.expectOne('/api/incidents/live');
+    req2.flush({ Incidents: [makeIncident()] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fixture.componentInstance.error()).toBe('');
   });
 });

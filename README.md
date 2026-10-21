@@ -215,6 +215,18 @@ Startup order is enforced by healthchecks: MongoDB must be ready before the API 
 
 ---
 
+## Testing
+
+| Suite  | Command                                | Runner                     |
+|--------|----------------------------------------|----------------------------|
+| Server | `cd server && npm test`                | Jest 29, mongodb-memory-server |
+| MCP    | `cd mcp && npm test`                   | Jest 29 + ts-jest (ESM)    |
+| Client | `cd client && npm test`                | Vitest 5 + jsdom, zoneless Angular |
+
+CI runs all three suites plus `ng build` and `mcp build` on every PR and push to `main`.
+
+---
+
 ## Local Development (without Docker)
 
 ### Backend
