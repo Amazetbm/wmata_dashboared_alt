@@ -6,8 +6,10 @@ server/scripts/verify-*.js
 .env
 server/.env
 dist/
+vault/
 *.log
 .idea/
 .claude/*
 .claude/settings.local.json
 CLAUDE.md
+/graphify-out/
