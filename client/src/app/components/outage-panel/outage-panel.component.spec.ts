@@ -46,7 +46,7 @@ describe('OutagePanelComponent', () => {
     req.flush([makeOutage(), makeOutage({ UnitName: 'A01X02', UnitType: 'ESCALATOR' })]);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.outages().length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(2);
   });
 
   it('re-renders on 30 s refresh', async () => {
@@ -55,14 +55,14 @@ describe('OutagePanelComponent', () => {
     req1.flush([makeOutage()]);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.outages().length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
     const req2 = httpMock.expectOne('/api/outages');
     req2.flush([makeOutage(), makeOutage({ UnitName: 'B01X01' })]);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.outages().length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(2);
   });
 
   it('sets error signal on HTTP error', async () => {
@@ -71,7 +71,7 @@ describe('OutagePanelComponent', () => {
     req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('empty state: zero outages', async () => {
@@ -80,7 +80,7 @@ describe('OutagePanelComponent', () => {
     req.flush([]);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.outages().length).toBe(0);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(0);
   });
 
   it('ELEVATOR type filter shows only elevators', async () => {

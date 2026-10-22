@@ -69,7 +69,7 @@ describe('IncidentsPanelComponent', () => {
     req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(fixture.componentInstance.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('clears error on subsequent success', async () => {
@@ -78,13 +78,13 @@ describe('IncidentsPanelComponent', () => {
     req1.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(fixture.componentInstance.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
 
     await vi.advanceTimersByTimeAsync(30_000);
     const req2 = httpMock.expectOne('/api/incidents/live');
     req2.flush({ Incidents: [makeIncident()] });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(fixture.componentInstance.error()).toBe('');
+    expect(fixture.nativeElement.querySelector('.error')).toBeFalsy();
   });
 });

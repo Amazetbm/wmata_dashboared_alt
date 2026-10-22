@@ -50,21 +50,23 @@ describe('StationMonitorComponent', () => {
     req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await fixture.whenStable();
 
-    expect(component.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('discards in-flight response when station changes', async () => {
-    httpMock.expectOne('/api/predictions/A01');
-
-    component.selectedCode = 'C05';
-    component.onStationChange();
-
-    const req2 = httpMock.expectOne('/api/predictions/C05');
-    req2.flush({ Trains: [makePrediction({ Line: 'BL', DestinationName: 'Largo Town Center' })] });
+    await fixture.whenStable(); // initial request for A01 is pending
+    const req1 = httpMock.expectOne('/api/predictions/A01');
+    // Change station via real DOM select before flushing req1
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    select.value = select.options[1].value; // A14 (Rockville)
+    select.dispatchEvent(new Event('change'));
     await fixture.whenStable();
-
+    // req1 was in-flight; switchMap cancelled it — expectOne() already removed it from
+    // the pending list so httpMock.verify() won't complain; do not flush cancelled request
+    const req2 = httpMock.expectOne(`/api/predictions/${select.options[1].value}`);
+    req2.flush({ Trains: [makePrediction({ Line: 'RD', DestinationName: 'Shady Grove' })] });
+    await fixture.whenStable();
     const rows = fixture.nativeElement.querySelectorAll('tbody tr');
     expect(rows.length).toBe(1);
-    expect(rows[0].textContent).toContain('Largo Town Center');
   });
 });

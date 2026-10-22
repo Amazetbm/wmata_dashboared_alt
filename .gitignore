@@ -13,3 +13,6 @@ vault/
 .claude/settings.local.json
 CLAUDE.md
 /graphify-out/
+
+# Local dev scripts
+scripts/

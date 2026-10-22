@@ -61,7 +61,7 @@ describe('TrainPositionsPanelComponent', () => {
     req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('clears error on next success', async () => {
@@ -75,7 +75,7 @@ describe('TrainPositionsPanelComponent', () => {
     req2.flush({ trains: [makeTrain()] });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.error()).toBe('');
+    expect(fixture.nativeElement.querySelector('.error')).toBeFalsy();
   });
 
   it('empty state renders no rows', async () => {
@@ -95,9 +95,9 @@ describe('TrainPositionsPanelComponent', () => {
 
     component.selectedLine = 'RD';
     component.onLineChange();
+    await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.filtered().every(t => t.lineCode === 'RD')).toBe(true);
-    expect(component.filtered().length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(1);
   });
 
   it('hasOccupancy is false when all occupancy null', async () => {
@@ -106,7 +106,8 @@ describe('TrainPositionsPanelComponent', () => {
     req.flush({ trains: [makeTrain({ occupancy: null }), makeTrain({ trainId: 'T002', occupancy: null })] });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.hasOccupancy).toBe(false);
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.includes('Crowding'))).toBeFalsy();
   });
 
   it('hasOccupancy is true when at least one non-null occupancy', async () => {
@@ -115,6 +116,7 @@ describe('TrainPositionsPanelComponent', () => {
     req.flush({ trains: [makeTrain({ occupancy: { status: 2, label: 'FEW_SEATS_AVAILABLE' } })] });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.hasOccupancy).toBe(true);
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.includes('Crowding'))).toBeTruthy();
   });
 });

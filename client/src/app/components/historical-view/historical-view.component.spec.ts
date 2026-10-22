@@ -35,7 +35,7 @@ describe('HistoricalViewComponent', () => {
     req.flush([makeHistoricalRecord(), makeHistoricalRecord()]);
     await fixture.whenStable();
 
-    expect(component.records().length).toBe(2);
+    expect(fixture.nativeElement.querySelector('.record-count')?.textContent).toContain('2');
   });
 
   it('fetch() with dataType=elevators calls getHistoricalElevators', async () => {
@@ -46,7 +46,7 @@ describe('HistoricalViewComponent', () => {
     req.flush([makeHistoricalRecord()]);
     await fixture.whenStable();
 
-    expect(component.records().length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.record-count')?.textContent).toContain('1');
   });
 
   it('sets error signal on HTTP error', async () => {
@@ -57,7 +57,7 @@ describe('HistoricalViewComponent', () => {
     req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await fixture.whenStable();
 
-    expect(component.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('empty state: empty array sets records to []', async () => {
@@ -68,7 +68,7 @@ describe('HistoricalViewComponent', () => {
     req.flush([]);
     await fixture.whenStable();
 
-    expect(component.records().length).toBe(0);
+    expect(fixture.nativeElement.querySelector('.record-count')).toBeFalsy();
   });
 
   it('startReplay() advances replayIndex every 1500 ms and stops at end', async () => {
@@ -87,14 +87,24 @@ describe('HistoricalViewComponent', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     component.startReplay();
-    expect(component.replayIndex()).toBe(0);
-    expect(component.isReplaying()).toBe(true);
+    fixture.detectChanges(); // flush signal changes to DOM
+
+    // replayIndex === 0 → snap-info shows "Snapshot 1 / 2"
+    expect(fixture.nativeElement.querySelector('.snap-info')?.textContent).toContain('Snapshot 1');
+    // isReplaying === true → start button disabled
+    const startBtn = fixture.nativeElement.querySelector('.replay-controls button') as HTMLButtonElement;
+    expect(startBtn?.disabled).toBe(true);
 
     await vi.advanceTimersByTimeAsync(1500);
-    expect(component.replayIndex()).toBe(1);
+    fixture.detectChanges(); // flush signal changes after interval fires
+    // replayIndex === 1 → snap-info shows "Snapshot 2"
+    expect(fixture.nativeElement.querySelector('.snap-info')?.textContent).toContain('Snapshot 2');
 
     await vi.advanceTimersByTimeAsync(1500);
-    expect(component.isReplaying()).toBe(false);
+    fixture.detectChanges(); // flush signal changes after replay ends
+    // replay ended → isReplaying === false → start button re-enabled
+    const startBtnFinal = fixture.nativeElement.querySelector('.replay-controls button') as HTMLButtonElement;
+    expect(startBtnFinal?.disabled).toBe(false);
 
     vi.useRealTimers();
   });

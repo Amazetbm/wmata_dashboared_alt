@@ -15,9 +15,13 @@ function flushThreeRequests(httpMock: HttpTestingController, adherence: any, inc
   httpMock.expectOne('/api/outages').flush(outages);
 }
 
+function findLineCard(nativeEl: Element, lineName: string): HTMLElement | undefined {
+  const cards = Array.from(nativeEl.querySelectorAll('.line-card')) as HTMLElement[];
+  return cards.find(c => c.querySelector('.line-name')?.textContent?.includes(lineName));
+}
+
 describe('ServiceHealthScorecardComponent', () => {
   let fixture: ComponentFixture<ServiceHealthScorecardComponent>;
-  let component: ServiceHealthScorecardComponent;
   let httpMock: HttpTestingController;
 
   beforeEach(async () => {
@@ -29,7 +33,6 @@ describe('ServiceHealthScorecardComponent', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(ServiceHealthScorecardComponent);
-    component = fixture.componentInstance;
     fixture.autoDetectChanges();
     httpMock = TestBed.inject(HttpTestingController);
   });
@@ -48,9 +51,9 @@ describe('ServiceHealthScorecardComponent', () => {
     );
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.lineScores().length).toBe(6);
-    const rd = component.lineScores().find(s => s.lineCode === 'RD')!;
-    expect(rd.adherencePct).toBe(90);
+    expect(fixture.nativeElement.querySelectorAll('.line-card').length).toBe(6);
+    const rdCard = findLineCard(fixture.nativeElement, 'Red')!;
+    expect(rdCard.querySelector('.adherence-pct')?.textContent?.trim()).toBe('90%');
   });
 
   it('counts incidents by parsing LinesAffected', async () => {
@@ -66,12 +69,15 @@ describe('ServiceHealthScorecardComponent', () => {
     );
     await vi.advanceTimersByTimeAsync(0);
 
-    const rd = component.lineScores().find(s => s.lineCode === 'RD')!;
-    const bl = component.lineScores().find(s => s.lineCode === 'BL')!;
-    const gr = component.lineScores().find(s => s.lineCode === 'GR')!;
-    expect(rd.incidentCount).toBe(2);
-    expect(bl.incidentCount).toBe(1);
-    expect(gr.incidentCount).toBe(1);
+    const rdCard = findLineCard(fixture.nativeElement, 'Red')!;
+    const blCard = findLineCard(fixture.nativeElement, 'Blue')!;
+    const grCard = findLineCard(fixture.nativeElement, 'Green')!;
+    const incText = (card: HTMLElement) =>
+      (Array.from(card.querySelectorAll('.metric')) as HTMLElement[])
+        .find(m => m.textContent?.includes('inc'))?.textContent?.trim();
+    expect(incText(rdCard)).toBe('2 inc');
+    expect(incText(blCard)).toBe('1 inc');
+    expect(incText(grCard)).toBe('1 inc');
   });
 
   it('computeStatus: < 70% adherence → degraded', async () => {
@@ -83,8 +89,8 @@ describe('ServiceHealthScorecardComponent', () => {
     );
     await vi.advanceTimersByTimeAsync(0);
 
-    const rd = component.lineScores().find(s => s.lineCode === 'RD')!;
-    expect(rd.status).toBe('degraded');
+    const rdCard = findLineCard(fixture.nativeElement, 'Red')!;
+    expect(rdCard.classList.contains('status-degraded')).toBe(true);
   });
 
   it('computeStatus: outage count >= 3 → degraded (when adherence good)', async () => {
@@ -97,8 +103,8 @@ describe('ServiceHealthScorecardComponent', () => {
     );
     await vi.advanceTimersByTimeAsync(0);
 
-    const rd = component.lineScores().find(s => s.lineCode === 'RD')!;
-    expect(rd.status).toBe('degraded');
+    const rdCard = findLineCard(fixture.nativeElement, 'Red')!;
+    expect(rdCard.classList.contains('status-degraded')).toBe(true);
   });
 
   it('sets error signal on forkJoin failure', async () => {
@@ -108,7 +114,7 @@ describe('ServiceHealthScorecardComponent', () => {
     httpMock.match('/api/outages');
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('refreshes on 30 s timer', async () => {
@@ -124,7 +130,7 @@ describe('ServiceHealthScorecardComponent', () => {
     );
     await vi.advanceTimersByTimeAsync(0);
 
-    const bl = component.lineScores().find(s => s.lineCode === 'BL')!;
-    expect(bl.adherencePct).toBe(100);
+    const blCard = findLineCard(fixture.nativeElement, 'Blue')!;
+    expect(blCard.querySelector('.adherence-pct')?.textContent?.trim()).toBe('100%');
   });
 });

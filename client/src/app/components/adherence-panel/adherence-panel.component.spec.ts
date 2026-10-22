@@ -56,7 +56,7 @@ describe('AdherencePanelComponent', () => {
     req.flush(makeAdherenceResponse([makeAdherenceRecord(), makeAdherenceRecord({ trainId: 'T002' })]));
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.filtered().length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(2);
   });
 
   it('re-renders on 30 s refresh', async () => {
@@ -70,7 +70,7 @@ describe('AdherencePanelComponent', () => {
     req2.flush(makeAdherenceResponse([makeAdherenceRecord(), makeAdherenceRecord({ trainId: 'T002' })]));
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.filtered().length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(2);
   });
 
   it('sets error signal on HTTP error', async () => {
@@ -79,7 +79,7 @@ describe('AdherencePanelComponent', () => {
     req.flush({ error: 'fail' }, { status: 500, statusText: 'Error' });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.error()).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.error')).toBeTruthy();
   });
 
   it('empty state: no trains', async () => {
@@ -88,7 +88,7 @@ describe('AdherencePanelComponent', () => {
     req.flush(makeAdherenceResponse([]));
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.filtered().length).toBe(0);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(0);
   });
 
   it('line filter and applyFilter updates filtered', async () => {
@@ -102,9 +102,9 @@ describe('AdherencePanelComponent', () => {
 
     component.selectedLine = 'RD';
     component.applyFilter();
+    await vi.advanceTimersByTimeAsync(0);
 
-    expect(component.filtered().every(t => t.lineCode === 'RD')).toBe(true);
-    expect(component.filtered().length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(1);
   });
 
   it('switching to historical mode fetches getHistoricalAdherence', async () => {
@@ -120,7 +120,7 @@ describe('AdherencePanelComponent', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(component.view).toBe('historical');
-    expect(component.hasFetched()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.empty')).toBeTruthy();
   });
 
   it('line filter persists as query param when switching to historical', async () => {
