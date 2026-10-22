@@ -1,0 +1,12 @@
+# Default: text files get LF in the repo, local checkout follows OS
+* text=auto eol=lf
+
+# Explicitly binary — never touch
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.eot binary
+*.pdf binary
