@@ -37,6 +37,7 @@ services:
       SNAPSHOT_RETENTION_DAYS: ${SNAPSHOT_RETENTION_DAYS:-90}
       GTFS_RAIL_OCCUPANCY: ${GTFS_RAIL_OCCUPANCY:-false}
       GTFS_BUS_OCCUPANCY: ${GTFS_BUS_OCCUPANCY:-false}
+      GTFS_RAIL_SCHEDULE: ${GTFS_RAIL_SCHEDULE:-false}
     depends_on:
       mongo:
         condition: service_healthy
