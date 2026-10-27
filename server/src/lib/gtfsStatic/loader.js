@@ -113,10 +113,12 @@ async function loadGtfsStatic(opts = {}) {
   const dir = await unzipper.Open.buffer(buf);
   const feedInfoFile = dir.files.find(f => f.path === 'feed_info.txt');
   let feedDate = '';
+  let feedVersionStr = '';
   let agencyTz = 'America/New_York';
   if (feedInfoFile) {
     const [info] = await parseFile(feedInfoFile);
     feedDate = info?.feed_start_date || '';
+    feedVersionStr = info?.feed_version || '';
   }
   const agencyFile = dir.files.find(f => f.path === 'agency.txt');
   if (agencyFile) {
@@ -138,7 +140,10 @@ async function loadGtfsStatic(opts = {}) {
     await loadTrips(dir, versionId);
     await loadStopTimes(dir, versionId);
 
-    // --- Step 5: Activate new version ---
+    // --- Step 5: Compute and persist meta (before activation) ---
+    await computeAndStoreMeta(versionId, feedVersionStr);
+
+    // --- Step 6: Activate new version ---
     await GtfsVersion.updateOne({ _id: versionId }, { $set: { status: 'active' } });
     console.log(`[gtfs-static] Version ${versionId} is now active`);
 
@@ -279,6 +284,36 @@ async function loadStopTimes(dir, versionId) {
     parser.on('error', reject);
     file.stream().pipe(parser);
   });
+}
+
+/** Compute feed summary stats and persist them to the GtfsVersion meta subdoc. */
+async function computeAndStoreMeta(versionId, feedVersionStr) {
+  const [routeCount, stopTimeCount, serviceIds, stationCodes, dateAgg] = await Promise.all([
+    GtfsRoute.countDocuments({ version: versionId }),
+    GtfsStopTime.countDocuments({ version: versionId }),
+    GtfsCalendarDate.distinct('serviceId', { version: versionId, exceptionType: 1 }),
+    GtfsStop.distinct('wmataCode', { version: versionId, locationType: 1, wmataCode: { $ne: '' } }),
+    GtfsCalendarDate.aggregate([
+      { $match: { version: versionId, exceptionType: 1 } },
+      { $group: { _id: null, start: { $min: '$date' }, end: { $max: '$date' } } },
+    ]),
+  ]);
+
+  const dateRange = dateAgg[0] || { start: '', end: '' };
+
+  await GtfsVersion.updateOne({ _id: versionId }, {
+    $set: {
+      'meta.feedVersion':            feedVersionStr || '',
+      'meta.routeCount':             routeCount,
+      'meta.stopTimeCount':          stopTimeCount,
+      'meta.frequencyCount':         0,
+      'meta.serviceIdCount':         serviceIds.length,
+      'meta.stationsMappedCount':    stationCodes.length,
+      'meta.serviceDateRange.start': dateRange.start,
+      'meta.serviceDateRange.end':   dateRange.end,
+    },
+  });
+  console.log(`[gtfs-static] Meta computed: ${routeCount} routes, ${stopTimeCount} stop_times, ${serviceIds.length} serviceIds`);
 }
 
 /** Delete all GTFS data for a version (largest collection first). */

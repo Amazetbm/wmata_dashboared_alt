@@ -1,5 +1,13 @@
 'use strict';
 
+jest.mock('../../lib/railGeometry', () => ({
+  getStations: jest.fn().mockResolvedValue(
+    new Map([['A01', { Name: 'Metro Center' }], ['A02', { Name: 'Farragut North' }]])
+  ),
+  getStandardRoutes: jest.fn().mockResolvedValue([]),
+  getCachedRoutes: jest.fn().mockResolvedValue([]),
+}));
+
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const mongoose = require('mongoose');
 const request = require('supertest');
@@ -11,8 +19,8 @@ const GtfsStop = require('../../models/GtfsStop');
 const { loadGtfsStatic } = require('../../lib/gtfsStatic/loader');
 
 // ---- Fixture data (same as schedule.test.js) ----
-const FEED_INFO = `feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date
-WMATA,http://www.wmata.com,en,20261027,20261106
+const FEED_INFO = `feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version
+WMATA,http://www.wmata.com,en,20261027,20261106,1.0
 `;
 const AGENCY = `agency_id,agency_name,agency_url,agency_timezone,agency_lang
 1,WMATA,http://www.wmata.com,America/New_York,en
@@ -27,10 +35,9 @@ PF_A01_C,Metro Center Platform C,,38.898303,-77.028099,1,0,STN_A01,1,
 STN_A02,Farragut North,,38.903192,-77.039766,1,1,,1,
 PF_A02_C,Farragut North Platform C,,38.903192,-77.039766,1,0,STN_A02,1,
 `;
-const CALENDAR_DATES = `service_id,date,exception_type
-WD,20261028,1
-WK,20261031,1
-`;
+const { DateTime } = require('luxon');
+const TODAY_GTFS = DateTime.now().setZone('America/New_York').toFormat('yyyyMMdd');
+const CALENDAR_DATES = `service_id,date,exception_type\nWD,${TODAY_GTFS},1\nWD,20261028,1\nWK,20261031,1\n`;
 const TRIPS = `route_id,service_id,trip_id,trip_headsign,direction_id,block_id,shape_id
 RED,WD,trip_red_wd_0,Glenmont,0,,RRED_1
 BLUE,WD,trip_blue_wd_0,Largo Town Center,0,,RBLU_1
@@ -108,6 +115,17 @@ describe('feature flag enabled', () => {
     expect(res.body.feedDate).toBe('20261027');
     expect(typeof res.body.stopCount).toBe('number');
     expect(typeof res.body.tripCount).toBe('number');
+    // New meta fields
+    expect(res.body.feedVersion).toEqual({ id: expect.any(String), gtfs: '1.0' });
+    expect(res.body.routeCount).toBe(2);
+    expect(typeof res.body.stopTimeCount).toBe('number');
+    expect(res.body.frequencyCount).toBe(0);
+    expect(typeof res.body.serviceIdCount).toBe('number');
+    expect(res.body.serviceDateRange.start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(res.body.serviceDateRange.end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(typeof res.body.coversToday).toBe('boolean');
+    expect(res.body.coversToday).toBe(true);  // TODAY_GTFS in fixture
+    expect(res.body.stationsMapped).toEqual({ mapped: 2, total: 2 });
   });
 
   it('GET /api/schedule/station/A01?date=2026-10-28 → 200 with departures', async () => {

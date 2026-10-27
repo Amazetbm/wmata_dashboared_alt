@@ -9,8 +9,10 @@ const GtfsTrip = require('../models/GtfsTrip');
 const GtfsStopTime = require('../models/GtfsStopTime');
 const {
   getActiveVersionId,
+  getActiveServiceIds,
   getScheduledDepartures,
 } = require('../lib/gtfsStatic/schedule');
+const { getStations } = require('../lib/railGeometry');
 
 const DISABLED_RESP = { error: 'Schedule feature disabled' };
 
@@ -32,17 +34,43 @@ router.get('/status', async (req, res) => {
     if (!version) {
       return res.json({ enabled: true, loaded: false });
     }
-    const [stopCount, tripCount] = await Promise.all([
+
+    const [stopCount, tripCount, serviceIdsResult, stationsResult] = await Promise.all([
       GtfsStop.countDocuments({ version: version._id }),
       GtfsTrip.countDocuments({ version: version._id }),
+      getActiveServiceIds(todayEastern(), version._id).then(ids => ({ ok: true, value: ids })).catch(() => ({ ok: false })),
+      getStations().then(m => ({ ok: true, value: m })).catch(() => ({ ok: false })),
     ]);
+
+    const coversToday = serviceIdsResult.ok ? serviceIdsResult.value.length > 0 : false;
+    const mappedCount = version.meta?.stationsMappedCount ?? 0;
+    const stationsMapped = stationsResult.ok
+      ? { mapped: mappedCount, total: stationsResult.value.size }
+      : { mapped: mappedCount };
+
+    function isoDate(yyyymmdd) {
+      if (!yyyymmdd) return null;
+      return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+    }
+
     return res.json({
       enabled: true,
       loaded: true,
       feedDate: version.feedDate,
       loadedAt: version.loadedAt,
+      feedVersion: { id: version._id.toString(), gtfs: version.meta?.feedVersion || null },
+      routeCount:     version.meta?.routeCount ?? 0,
       stopCount,
+      stopTimeCount:  version.meta?.stopTimeCount ?? 0,
+      frequencyCount: version.meta?.frequencyCount ?? 0,
       tripCount,
+      serviceIdCount: version.meta?.serviceIdCount ?? 0,
+      serviceDateRange: {
+        start: isoDate(version.meta?.serviceDateRange?.start),
+        end:   isoDate(version.meta?.serviceDateRange?.end),
+      },
+      coversToday,
+      stationsMapped,
     });
   } catch (err) {
     console.error('[schedule/status]', err.message);

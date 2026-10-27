@@ -6,6 +6,18 @@ const gtfsVersionSchema = new mongoose.Schema({
   agencyTz:  { type: String, default: 'America/New_York' },
   status:    { type: String, enum: ['loading', 'active', 'stale'], default: 'loading' },
   loadedAt:  { type: Date, default: Date.now },
+  meta: {
+    feedVersion:         { type: String, default: '' },
+    routeCount:          { type: Number, default: 0 },
+    stopTimeCount:       { type: Number, default: 0 },
+    frequencyCount:      { type: Number, default: 0 },  // always 0 for WMATA
+    serviceIdCount:      { type: Number, default: 0 },
+    stationsMappedCount: { type: Number, default: 0 },
+    serviceDateRange: {
+      start: { type: String, default: '' },  // "YYYYMMDD"
+      end:   { type: String, default: '' },
+    },
+  },
 });
 
 gtfsVersionSchema.index({ status: 1 });
