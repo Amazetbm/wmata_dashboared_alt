@@ -1,11 +1,10 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-RUN npm install -g npm@11
 COPY package*.json ./
-RUN npm ci
+RUN npm install --ignore-scripts
 
 COPY . .
 RUN node node_modules/@angular/cli/bin/ng.js build --configuration production
