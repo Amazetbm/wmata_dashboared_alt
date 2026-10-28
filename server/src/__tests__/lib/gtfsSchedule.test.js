@@ -79,7 +79,7 @@ let versionId;
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri());
-  const result = await loadGtfsStatic({ zipBuffer: buildZip() });
+  const result = await loadGtfsStatic({ zipBuffer: buildZip(), minStations: 1 });
   const v = await GtfsVersion.findOne({ status: 'active' });
   versionId = v._id;
 });

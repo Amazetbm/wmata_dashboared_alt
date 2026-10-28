@@ -7,6 +7,7 @@ const gtfsVersionSchema = new mongoose.Schema({
   status:    { type: String, enum: ['loading', 'active', 'stale'], default: 'loading' },
   loadedAt:  { type: Date, default: Date.now },
   meta: {
+    computedAt:          { type: Date, default: null },  // null = meta not yet computed
     feedVersion:         { type: String, default: '' },
     routeCount:          { type: Number, default: 0 },
     stopTimeCount:       { type: Number, default: 0 },

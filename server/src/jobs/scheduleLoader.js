@@ -2,7 +2,7 @@
 
 const cron = require('node-cron');
 const GtfsVersion = require('../models/GtfsVersion');
-const { loadGtfsStatic } = require('../lib/gtfsStatic/loader');
+const { loadGtfsStatic, computeAndStoreMeta } = require('../lib/gtfsStatic/loader');
 
 const ENABLED = process.env.GTFS_RAIL_SCHEDULE === 'true';
 const STALE_HOURS = 36; // reload if active version is older than this
@@ -19,7 +19,17 @@ async function init() {
   const staleMs = STALE_HOURS * 60 * 60 * 1000;
   const needsLoad = !active || (Date.now() - active.loadedAt.getTime() > staleMs);
 
-  if (needsLoad) {
+  // Backfill meta if the active version was loaded before computeAndStoreMeta was added
+  if (active && !active.meta?.computedAt) {
+    console.log('[scheduleLoader] Backfilling meta for existing active version…');
+    computeAndStoreMeta(active._id, active.meta?.feedVersion || '')
+      .catch(err => console.error('[scheduleLoader] Meta backfill failed:', err.message));
+  }
+
+  if (process.env.GTFS_FORCE_RELOAD === 'true') {
+    console.log('[scheduleLoader] GTFS_FORCE_RELOAD=true — triggering forced reload');
+    runLoad({ force: true }).catch(err => console.error('[scheduleLoader] Force reload failed:', err.message));
+  } else if (needsLoad) {
     console.log('[scheduleLoader] Triggering immediate GTFS static load');
     runLoad().catch(err => console.error('[scheduleLoader] Initial load failed:', err.message));
   } else {
@@ -33,9 +43,9 @@ async function init() {
   }, { timezone: 'America/New_York' });
 }
 
-async function runLoad() {
+async function runLoad(opts = {}) {
   try {
-    const result = await loadGtfsStatic();
+    const result = await loadGtfsStatic(opts);
     if (result.skipped) {
       console.log('[scheduleLoader] Feed unchanged, no reload needed');
     } else {

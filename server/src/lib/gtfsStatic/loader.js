@@ -28,17 +28,45 @@ const ROUTE_TO_LINE = {
 
 /**
  * Derive the legacy WMATA station code from a GTFS stop_id.
- *   STN_A15    → "A15"
- *   PF_A15_C   → "A15"
- *   anything else → ""
+ *   STN_A15        → "A15"
+ *   STN_A01_C01    → "A01"  (merged transfer-station IDs — take the primary code only)
+ *   PF_A15_C       → "A15"
+ *   anything else  → ""
  */
 function deriveWmataCode(stopId) {
-  if (stopId.startsWith('STN_')) return stopId.slice(4);
+  if (stopId.startsWith('STN_')) {
+    const suffix = stopId.slice(4);    // e.g. "A15" or "A01_C01"
+    return suffix.split('_')[0];       // always the primary code
+  }
   if (stopId.startsWith('PF_')) {
-    const inner = stopId.slice(3); // "A15_C"
-    return inner.split('_')[0];    // "A15"
+    const inner = stopId.slice(3);     // "A15_C"
+    return inner.split('_')[0];        // "A15"
   }
   return '';
+}
+
+/**
+ * Validate that the newly-loaded feed has enough data before activating it.
+ * Throws if any check fails — the version stays in 'loading' status.
+ *
+ * @param {mongoose.Types.ObjectId} versionId
+ * @param {object} [opts]
+ * @param {number} [opts.minStations=95]  minimum number of distinct station codes required
+ */
+async function validateBeforeActivation(versionId, opts = {}) {
+  const minStations = opts.minStations ?? 95;
+  const [routeCount, stopTimeCount, serviceIds, stationCodes] = await Promise.all([
+    GtfsRoute.countDocuments({ version: versionId }),
+    GtfsStopTime.countDocuments({ version: versionId }),
+    GtfsCalendarDate.distinct('serviceId', { version: versionId, exceptionType: 1 }),
+    GtfsStop.distinct('wmataCode', { version: versionId, locationType: 1, wmataCode: { $ne: '' } }),
+  ]);
+  const errors = [];
+  if (routeCount === 0)                    errors.push('no routes');
+  if (stopTimeCount === 0)                 errors.push('no stop_times');
+  if (serviceIds.length === 0)             errors.push('no active service IDs');
+  if (stationCodes.length < minStations)   errors.push(`only ${stationCodes.length} stations mapped (threshold: ${minStations})`);
+  if (errors.length) throw new Error(`[gtfs-static] Validation failed: ${errors.join(', ')}`);
 }
 
 /** Insert docs in batches of BATCH_SIZE. */
@@ -71,8 +99,10 @@ function parseFile(fileEntry) {
  * Safe to call on startup and daily — skips if feed hash is unchanged.
  *
  * @param {object} [opts]
- * @param {string} [opts.apiKey]  WMATA API key (defaults to process.env.WMATA_API_KEY)
- * @param {Buffer} [opts.zipBuffer]  pre-loaded zip bytes (for testing)
+ * @param {string} [opts.apiKey]      WMATA API key (defaults to process.env.WMATA_API_KEY)
+ * @param {Buffer} [opts.zipBuffer]   pre-loaded zip bytes (for testing)
+ * @param {boolean} [opts.force]      bypass hash-based skip; always reload
+ * @param {number}  [opts.minStations] minimum station codes for validation (default 95)
  * @returns {Promise<{skipped?: boolean, newVersionId?: string}>}
  */
 async function loadGtfsStatic(opts = {}) {
@@ -93,12 +123,14 @@ async function loadGtfsStatic(opts = {}) {
     console.log(`[gtfs-static] Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB`);
   }
 
-  // --- Step 2: Hash check ---
+  // --- Step 2: Hash check (skip if unchanged, unless force=true) ---
   const feedHash = crypto.createHash('sha256').update(buf).digest('hex');
-  const existing = await GtfsVersion.findOne({ feedHash, status: 'active' });
-  if (existing) {
-    console.log('[gtfs-static] Feed unchanged — skipping reload');
-    return { skipped: true };
+  if (!opts.force) {
+    const existing = await GtfsVersion.findOne({ feedHash, status: 'active' });
+    if (existing) {
+      console.log('[gtfs-static] Feed unchanged — skipping reload');
+      return { skipped: true };
+    }
   }
 
   // Clean up any orphaned 'loading' versions from previous crashed runs
@@ -140,7 +172,8 @@ async function loadGtfsStatic(opts = {}) {
     await loadTrips(dir, versionId);
     await loadStopTimes(dir, versionId);
 
-    // --- Step 5: Compute and persist meta (before activation) ---
+    // --- Step 5: Validate and compute meta (before activation) ---
+    await validateBeforeActivation(versionId, { minStations: opts.minStations });
     await computeAndStoreMeta(versionId, feedVersionStr);
 
     // --- Step 6: Activate new version ---
@@ -303,6 +336,7 @@ async function computeAndStoreMeta(versionId, feedVersionStr) {
 
   await GtfsVersion.updateOne({ _id: versionId }, {
     $set: {
+      'meta.computedAt':             new Date(),
       'meta.feedVersion':            feedVersionStr || '',
       'meta.routeCount':             routeCount,
       'meta.stopTimeCount':          stopTimeCount,
@@ -325,4 +359,4 @@ async function deleteVersionData(versionId) {
   await GtfsRoute.deleteMany({ version: versionId });
 }
 
-module.exports = { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE };
+module.exports = { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE, computeAndStoreMeta };

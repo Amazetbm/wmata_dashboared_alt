@@ -14,6 +14,9 @@ const GtfsStopTime = require('../../models/GtfsStopTime');
 
 const { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE } = require('../../lib/gtfsStatic/loader');
 
+// Test fixtures only have 2 stations; pass minStations:1 to bypass the 95-station gate
+const load = (opts = {}) => loadGtfsStatic({ minStations: 1, ...opts });
+
 // --- Fixture helpers ---
 
 const FEED_INFO = `feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date
@@ -112,7 +115,7 @@ afterEach(async () => {
 describe('loadGtfsStatic', () => {
   it('populates all collections from fixture zip', async () => {
     const zipBuffer = buildZip();
-    await loadGtfsStatic({ zipBuffer });
+    await load({ zipBuffer });
 
     const version = await GtfsVersion.findOne({ status: 'active' });
     expect(version).not.toBeNull();
@@ -127,7 +130,7 @@ describe('loadGtfsStatic', () => {
   });
 
   it('maps route_id to lineCode correctly', async () => {
-    await loadGtfsStatic({ zipBuffer: buildZip() });
+    await load({ zipBuffer: buildZip() });
     const version = await GtfsVersion.findOne({ status: 'active' });
     const redRoute = await GtfsRoute.findOne({ version: version._id, routeId: 'RED' });
     expect(redRoute.lineCode).toBe('RD');
@@ -136,7 +139,7 @@ describe('loadGtfsStatic', () => {
   });
 
   it('derives wmataCode for STN_ and PF_ stop IDs', async () => {
-    await loadGtfsStatic({ zipBuffer: buildZip() });
+    await load({ zipBuffer: buildZip() });
     const version = await GtfsVersion.findOne({ status: 'active' });
     const stn = await GtfsStop.findOne({ version: version._id, stopId: 'STN_A01' });
     expect(stn.wmataCode).toBe('A01');
@@ -146,20 +149,20 @@ describe('loadGtfsStatic', () => {
 
   it('skips reload when feed hash is unchanged', async () => {
     const zipBuffer = buildZip('v1');
-    await loadGtfsStatic({ zipBuffer });
+    await load({ zipBuffer });
 
     const versionsBefore = await GtfsVersion.countDocuments();
-    const result = await loadGtfsStatic({ zipBuffer }); // same bytes → same hash
+    const result = await load({ zipBuffer }); // same bytes → same hash
     expect(result.skipped).toBe(true);
     expect(await GtfsVersion.countDocuments()).toBe(versionsBefore);
   });
 
   it('replaces old active version when feed hash changes', async () => {
-    await loadGtfsStatic({ zipBuffer: buildZip('v1') });
+    await load({ zipBuffer: buildZip('v1') });
     const v1 = await GtfsVersion.findOne({ status: 'active' });
     const v1Id = v1._id;
 
-    await loadGtfsStatic({ zipBuffer: buildZip('v2') });
+    await load({ zipBuffer: buildZip('v2') });
 
     const v2 = await GtfsVersion.findOne({ status: 'active' });
     expect(v2._id.toString()).not.toBe(v1Id.toString());
@@ -181,7 +184,7 @@ describe('loadGtfsStatic', () => {
     });
     await GtfsRoute.create({ version: orphan._id, routeId: 'RED', lineCode: 'RD', longName: 'Red' });
 
-    await loadGtfsStatic({ zipBuffer: buildZip('clean') });
+    await load({ zipBuffer: buildZip('clean') });
 
     // Orphan should be gone
     expect(await GtfsVersion.findById(orphan._id)).toBeNull();
@@ -196,6 +199,13 @@ describe('deriveWmataCode', () => {
   it('extracts code from STN_ prefix', () => {
     expect(deriveWmataCode('STN_A01')).toBe('A01');
     expect(deriveWmataCode('STN_N06')).toBe('N06');
+  });
+
+  it('extracts primary code from merged transfer-station STN_ IDs', () => {
+    expect(deriveWmataCode('STN_A01_C01')).toBe('A01');
+    expect(deriveWmataCode('STN_B01_F01')).toBe('B01');
+    expect(deriveWmataCode('STN_D03_F03')).toBe('D03');
+    expect(deriveWmataCode('STN_B06_E06')).toBe('B06');
   });
 
   it('extracts code from PF_ prefix (ignores platform suffix)', () => {

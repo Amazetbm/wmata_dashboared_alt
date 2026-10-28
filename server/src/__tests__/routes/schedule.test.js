@@ -8,6 +8,11 @@ jest.mock('../../lib/railGeometry', () => ({
   getCachedRoutes: jest.fn().mockResolvedValue([]),
 }));
 
+// Prevent real HTTP downloads (e.g. from POST /reload's fire-and-forget background call)
+jest.mock('axios', () => ({
+  get: jest.fn().mockRejectedValue(new Error('axios mocked in tests')),
+}));
+
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const mongoose = require('mongoose');
 const request = require('supertest');
@@ -16,7 +21,7 @@ const AdmZip = require('adm-zip');
 
 const GtfsVersion = require('../../models/GtfsVersion');
 const GtfsStop = require('../../models/GtfsStop');
-const { loadGtfsStatic } = require('../../lib/gtfsStatic/loader');
+const { loadGtfsStatic, computeAndStoreMeta } = require('../../lib/gtfsStatic/loader');
 
 // ---- Fixture data (same as schedule.test.js) ----
 const FEED_INFO = `feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version
@@ -71,10 +76,24 @@ app.use('/api/schedule', scheduleRoutes);
 
 let mongod;
 
+// Build a zip with no stop_times (for validation gate test)
+function buildZipNoStopTimes() {
+  const zip = new AdmZip();
+  zip.addFile('feed_info.txt', Buffer.from(FEED_INFO));
+  zip.addFile('agency.txt',    Buffer.from(AGENCY));
+  zip.addFile('routes.txt',    Buffer.from(ROUTES));
+  zip.addFile('stops.txt',     Buffer.from(STOPS));
+  zip.addFile('calendar_dates.txt', Buffer.from(CALENDAR_DATES));
+  zip.addFile('trips.txt',     Buffer.from(TRIPS));
+  // stop_times.txt intentionally omitted
+  return zip.toBuffer();
+}
+
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri());
-  await loadGtfsStatic({ zipBuffer: buildZip() });
+  // minStations:1 because the fixture only has 2 stations (threshold is 95 in production)
+  await loadGtfsStatic({ zipBuffer: buildZip(), minStations: 1 });
 });
 
 afterAll(async () => {
@@ -169,5 +188,111 @@ describe('feature flag enabled', () => {
     for (let i = 1; i < deps.length; i++) {
       expect(deps[i].departureSec).toBeGreaterThanOrEqual(deps[i - 1].departureSec);
     }
+  });
+
+  it('GET /api/schedule/station/A01?minutes=30 is accepted and returns valid structure', async () => {
+    const res = await request(app).get('/api/schedule/station/A01?minutes=30');
+    expect(res.status).toBe(200);
+    expect(res.body.station.code).toBe('A01');
+    expect(Array.isArray(res.body.departures)).toBe(true);
+  });
+
+  it('?minutes=0 returns no departures (nothing departs in 0 minutes)', async () => {
+    const res = await request(app).get('/api/schedule/station/A01?minutes=0');
+    expect(res.status).toBe(200);
+    expect(res.body.departures).toHaveLength(0);
+  });
+
+  it('status returns null meta fields when computedAt is absent', async () => {
+    // Temporarily clear computedAt from the active version
+    const version = await GtfsVersion.findOne({ status: 'active' });
+    await GtfsVersion.updateOne({ _id: version._id }, { $unset: { 'meta.computedAt': 1 } });
+    try {
+      const res = await request(app).get('/api/schedule/status');
+      expect(res.status).toBe(200);
+      expect(res.body.routeCount).toBeNull();
+      expect(res.body.stopTimeCount).toBeNull();
+      expect(res.body.serviceIdCount).toBeNull();
+      expect(res.body.serviceDateRange).toBeNull();
+      expect(res.body.stationsMapped).toBeNull();
+      expect(res.body.feedVersion).toBeNull();
+    } finally {
+      // Restore meta
+      await computeAndStoreMeta(version._id, '1.0');
+    }
+  });
+
+  it('POST /api/schedule/reload triggers a reload and returns 200', async () => {
+    const res = await request(app).post('/api/schedule/reload');
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/triggered/i);
+  });
+});
+
+// ---- Tests: validation gate ----
+
+describe('validation gate', () => {
+  beforeAll(() => { process.env.GTFS_RAIL_SCHEDULE = 'true'; });
+  afterAll(() => { delete process.env.GTFS_RAIL_SCHEDULE; });
+
+  it('feed with no stop_times never becomes active', async () => {
+    const activeIdBefore = (await GtfsVersion.findOne({ status: 'active' }))._id.toString();
+
+    // minStations:0 so only the stop_times check fires
+    await expect(
+      loadGtfsStatic({ zipBuffer: buildZipNoStopTimes(), minStations: 0 })
+    ).rejects.toThrow(/Validation failed.*no stop_times/);
+
+    // The failed version must still be 'loading', never promoted to 'active'
+    const loading = await GtfsVersion.find({ status: 'loading' });
+    expect(loading.length).toBe(1);
+    expect(loading[0].status).toBe('loading');
+
+    // The original active version is unchanged
+    const active = await GtfsVersion.findOne({ status: 'active' });
+    expect(active).not.toBeNull();
+    expect(active._id.toString()).toBe(activeIdBefore);
+
+    await GtfsVersion.deleteMany({ status: 'loading' });
+  });
+
+  it('feed with too few stations never becomes active', async () => {
+    const activeIdBefore = (await GtfsVersion.findOne({ status: 'active' }))._id.toString();
+
+    // The fixture has 2 stations; require 99 to trigger the station-count check.
+    // Use a different hash from the main fixture so the hash-skip doesn't fire.
+    const zip = new AdmZip();
+    zip.addFile('feed_info.txt', Buffer.from(FEED_INFO));
+    zip.addFile('agency.txt',    Buffer.from(AGENCY));
+    zip.addFile('routes.txt',    Buffer.from(ROUTES));
+    zip.addFile('stops.txt',     Buffer.from(STOPS));
+    zip.addFile('calendar_dates.txt', Buffer.from(CALENDAR_DATES));
+    zip.addFile('trips.txt',     Buffer.from(TRIPS));
+    zip.addFile('stop_times.txt', Buffer.from(STOP_TIMES));
+    zip.addFile('_marker.txt',   Buffer.from('few-stations'));
+    const fewStationsZip = zip.toBuffer();
+
+    await expect(
+      loadGtfsStatic({ zipBuffer: fewStationsZip, minStations: 99 })
+    ).rejects.toThrow(/Validation failed.*stations mapped/);
+
+    // The failed version must still be 'loading', never promoted to 'active'
+    const loading = await GtfsVersion.find({ status: 'loading' });
+    expect(loading.length).toBe(1);
+    expect(loading[0].status).toBe('loading');
+
+    // The original active version is unchanged
+    const active = await GtfsVersion.findOne({ status: 'active' });
+    expect(active).not.toBeNull();
+    expect(active._id.toString()).toBe(activeIdBefore);
+
+    await GtfsVersion.deleteMany({ status: 'loading' });
+  });
+
+  it('POST /api/schedule/reload → 503 when feature disabled', async () => {
+    process.env.GTFS_RAIL_SCHEDULE = 'false';
+    const res = await request(app).post('/api/schedule/reload');
+    expect(res.status).toBe(503);
+    process.env.GTFS_RAIL_SCHEDULE = 'true';
   });
 });

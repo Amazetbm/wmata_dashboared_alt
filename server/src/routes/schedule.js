@@ -13,6 +13,7 @@ const {
   getScheduledDepartures,
 } = require('../lib/gtfsStatic/schedule');
 const { getStations } = require('../lib/railGeometry');
+const { loadGtfsStatic } = require('../lib/gtfsStatic/loader');
 
 const DISABLED_RESP = { error: 'Schedule feature disabled' };
 
@@ -43,6 +44,7 @@ router.get('/status', async (req, res) => {
     ]);
 
     const coversToday = serviceIdsResult.ok ? serviceIdsResult.value.length > 0 : false;
+    const metaReady = !!version.meta?.computedAt;
     const mappedCount = version.meta?.stationsMappedCount ?? 0;
     const stationsMapped = stationsResult.ok
       ? { mapped: mappedCount, total: stationsResult.value.size }
@@ -58,19 +60,19 @@ router.get('/status', async (req, res) => {
       loaded: true,
       feedDate: version.feedDate,
       loadedAt: version.loadedAt,
-      feedVersion: { id: version._id.toString(), gtfs: version.meta?.feedVersion || null },
-      routeCount:     version.meta?.routeCount ?? 0,
+      feedVersion:    metaReady ? { id: version._id.toString(), gtfs: version.meta.feedVersion || null } : null,
+      routeCount:     metaReady ? version.meta.routeCount  : null,
       stopCount,
-      stopTimeCount:  version.meta?.stopTimeCount ?? 0,
-      frequencyCount: version.meta?.frequencyCount ?? 0,
+      stopTimeCount:  metaReady ? version.meta.stopTimeCount  : null,
+      frequencyCount: metaReady ? version.meta.frequencyCount : null,
       tripCount,
-      serviceIdCount: version.meta?.serviceIdCount ?? 0,
-      serviceDateRange: {
-        start: isoDate(version.meta?.serviceDateRange?.start),
-        end:   isoDate(version.meta?.serviceDateRange?.end),
-      },
+      serviceIdCount: metaReady ? version.meta.serviceIdCount : null,
+      serviceDateRange: metaReady ? {
+        start: isoDate(version.meta.serviceDateRange?.start),
+        end:   isoDate(version.meta.serviceDateRange?.end),
+      } : null,
       coversToday,
-      stationsMapped,
+      stationsMapped: metaReady ? stationsMapped : null,
     });
   } catch (err) {
     console.error('[schedule/status]', err.message);
@@ -109,21 +111,42 @@ router.get('/station/:code', async (req, res) => {
       });
     }
 
-    // Check station exists
+    // Check station exists — prefer locationType:1 (station) over 0 (platform).
+    // Transfer stations (e.g. A01/C01) share one STN_ record; the secondary code
+    // (C01) is only found as a platform stop (locationType:0).
     const stationStop = await GtfsStop.findOne({
       version: vid,
       wmataCode: code.toUpperCase(),
-      locationType: 1,
-    }).lean();
+      locationType: { $in: [0, 1] },
+    }).sort({ locationType: -1 }).lean();
 
     if (!stationStop) {
       return res.status(404).json({ error: `Station ${code} not found` });
     }
 
-    const departures = await getScheduledDepartures(code.toUpperCase(), localDate, vid);
+    // For platform stops, use the parent station name if available
+    let stationName = stationStop.stopName;
+    if (stationStop.locationType === 0 && stationStop.parentStation) {
+      const parent = await GtfsStop.findOne({
+        version: vid,
+        stopId: stationStop.parentStation,
+      }).lean();
+      if (parent?.stopName) stationName = parent.stopName;
+    }
+
+    let departures = await getScheduledDepartures(code.toUpperCase(), localDate, vid);
+
+    // Optional window filter: ?minutes=N returns only departures in the next N minutes
+    const minutes = req.query.minutes != null ? parseInt(req.query.minutes, 10) : null;
+    if (minutes != null && !isNaN(minutes) && minutes >= 0) {
+      const nowEt = DateTime.now().setZone('America/New_York');
+      const nowSec = nowEt.hour * 3600 + nowEt.minute * 60 + nowEt.second;
+      const windowEnd = nowSec + minutes * 60;
+      departures = departures.filter(d => d.departureSec >= nowSec && d.departureSec <= windowEnd);
+    }
 
     return res.json({
-      station: { code: code.toUpperCase(), name: stationStop.stopName },
+      station: { code: code.toUpperCase(), name: stationName },
       departures: departures.map(d => ({
         tripId: d.tripId,
         lineCode: d.lineCode,
@@ -137,6 +160,20 @@ router.get('/station/:code', async (req, res) => {
     console.error('[schedule/station]', err.message);
     return res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+/**
+ * POST /api/schedule/reload
+ * Trigger a forced reload of the GTFS static feed (dev/ops tool).
+ * Fire-and-forget — returns immediately while the load runs in the background.
+ * Only available when GTFS_RAIL_SCHEDULE=true.
+ */
+router.post('/reload', (req, res) => {
+  if (!isEnabled()) return res.status(503).json(DISABLED_RESP);
+  loadGtfsStatic({ force: true })
+    .then(r => console.log('[schedule/reload] Complete:', r))
+    .catch(err => console.error('[schedule/reload] Failed:', err.message));
+  return res.json({ message: 'Reload triggered' });
 });
 
 module.exports = router;
