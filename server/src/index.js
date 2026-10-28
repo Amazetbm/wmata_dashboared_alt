@@ -13,6 +13,8 @@ const outageRoutes    = require('./routes/outages');
 const mapRoutes       = require('./routes/map');
 const busRoutes       = require('./routes/bus');
 const assistantRoutes = require('./routes/assistant');
+const scheduleRoutes  = require('./routes/schedule');
+const scheduleLoader  = require('./jobs/scheduleLoader');
 
 const app = express();
 app.set('trust proxy', 1); // trust X-Real-IP from nginx for rate limiting
@@ -30,12 +32,14 @@ app.use('/api/outages',  outageRoutes);
 app.use('/api/map',     mapRoutes);
 app.use('/api/bus',       busRoutes);
 app.use('/api/assistant', assistantRoutes);
+app.use('/api/schedule', scheduleRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('MongoDB connected');
     await ensureTtlIndexes();
     startPolling();
+    await scheduleLoader.init();
     const port = process.env.PORT || 3000;
     app.listen(port, () => console.log(`Server running on port ${port}`));
   })
