@@ -12,7 +12,6 @@ const {
   getActiveServiceIds,
   getScheduledDepartures,
 } = require('../lib/gtfsStatic/schedule');
-const { getStations } = require('../lib/railGeometry');
 const { loadGtfsStatic } = require('../lib/gtfsStatic/loader');
 
 const DISABLED_RESP = { error: 'Schedule feature disabled' };
@@ -36,19 +35,16 @@ router.get('/status', async (req, res) => {
       return res.json({ enabled: true, loaded: false });
     }
 
-    const [stopCount, tripCount, serviceIdsResult, stationsResult] = await Promise.all([
+    const [stopCount, tripCount, serviceIdsResult] = await Promise.all([
       GtfsStop.countDocuments({ version: version._id }),
       GtfsTrip.countDocuments({ version: version._id }),
       getActiveServiceIds(todayEastern(), version._id).then(ids => ({ ok: true, value: ids })).catch(() => ({ ok: false })),
-      getStations().then(m => ({ ok: true, value: m })).catch(() => ({ ok: false })),
     ]);
 
     const coversToday = serviceIdsResult.ok ? serviceIdsResult.value.length > 0 : false;
     const metaReady = !!version.meta?.computedAt;
     const mappedCount = version.meta?.stationsMappedCount ?? 0;
-    const stationsMapped = stationsResult.ok
-      ? { mapped: mappedCount, total: stationsResult.value.size }
-      : { mapped: mappedCount };
+    const stationsMapped = { mapped: mappedCount, total: mappedCount };
 
     function isoDate(yyyymmdd) {
       if (!yyyymmdd) return null;
