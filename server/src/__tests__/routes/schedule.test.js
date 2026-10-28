@@ -1,9 +1,6 @@
 'use strict';
 
 jest.mock('../../lib/railGeometry', () => ({
-  getStations: jest.fn().mockResolvedValue(
-    new Map([['A01', { Name: 'Metro Center' }], ['A02', { Name: 'Farragut North' }]])
-  ),
   getStandardRoutes: jest.fn().mockResolvedValue([]),
   getCachedRoutes: jest.fn().mockResolvedValue([]),
 }));

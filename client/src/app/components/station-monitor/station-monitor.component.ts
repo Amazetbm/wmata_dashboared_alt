@@ -87,6 +87,7 @@ const STATIONS: { code: string; name: string }[] = [
   { code: 'C08', name: 'Pentagon City' },
   { code: 'C09', name: 'Crystal City' },
   { code: 'C10', name: 'Reagan National Airport' },
+  { code: 'C11', name: 'Potomac Yard' },
   { code: 'C12', name: 'Braddock Road' },
   { code: 'C13', name: 'King St-Old Town' },
 
