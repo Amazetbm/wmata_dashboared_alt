@@ -59,24 +59,51 @@ test('returns empty trips array for empty feed', () => {
   expect(trips).toEqual([]);
 });
 
-// ── SR=2 (UNSCHEDULED) excluded ───────────────────────────────────────────────
+// ── Non-SCHEDULED trips passed through with correct scheduleRelationship ──────
 
-test('skips UNSCHEDULED trips (scheduleRelationship=2)', () => {
+test('passes through UNSCHEDULED trip (SR=2) with scheduleRelationship=2', () => {
   const buf = buildFeed({
     timestamp: 1700000000,
     entities: [scheduledTrip({ sr: 2, tripId: 'T_NR' })],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips).toHaveLength(0);
+  expect(trips).toHaveLength(1);
+  expect(trips[0].scheduleRelationship).toBe(2);
+  expect(trips[0].tripId).toBe('T_NR');
+  // Non-SCHEDULED → no reference stop lookup
+  expect(trips[0].refStopSequence).toBeNull();
+  expect(trips[0].refActualTimeSec).toBeNull();
 });
 
-test('skips ADDED trips (scheduleRelationship=1)', () => {
+test('passes through ADDED trip (SR=1) with scheduleRelationship=1', () => {
   const buf = buildFeed({
     timestamp: 1700000000,
     entities: [scheduledTrip({ sr: 1, tripId: 'T_ADDED' })],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips).toHaveLength(0);
+  expect(trips).toHaveLength(1);
+  expect(trips[0].scheduleRelationship).toBe(1);
+  expect(trips[0].refStopSequence).toBeNull();
+});
+
+test('passes through CANCELED trip (SR=3) with scheduleRelationship=3 and no reference stop', () => {
+  const feedTs = 1700000000;
+  const buf = buildFeed({
+    timestamp: feedTs,
+    entities: [
+      scheduledTrip({
+        sr: 3,
+        tripId: 'T_CANCELED',
+        // STUs present but should be ignored for non-SCHEDULED
+        stus: [{ stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: feedTs + 200 } }],
+      }),
+    ],
+  });
+  const { trips } = decodeTripUpdates(buf);
+  expect(trips).toHaveLength(1);
+  expect(trips[0].scheduleRelationship).toBe(3);
+  expect(trips[0].refStopSequence).toBeNull();
+  expect(trips[0].refActualTimeSec).toBeNull();
 });
 
 // ── SCHEDULED trip included ───────────────────────────────────────────────────
@@ -91,6 +118,8 @@ test('includes SCHEDULED trip and maps routeId to lineCode', () => {
   expect(trips[0].routeId).toBe('RED');
   expect(trips[0].lineCode).toBe('RD');
   expect(trips[0].vehicleId).toBe('V001');
+  // SR=0 → scheduleRelationship=0
+  expect(trips[0].scheduleRelationship).toBe(0);
 });
 
 test('includes trip when scheduleRelationship is absent (null treated as SCHEDULED)', () => {
@@ -110,6 +139,8 @@ test('includes trip when scheduleRelationship is absent (null treated as SCHEDUL
   const { trips } = decodeTripUpdates(buf);
   expect(trips).toHaveLength(1);
   expect(trips[0].lineCode).toBe('BL');
+  // Absent SR in protobuf3 → decoded as default value 0; scheduleRelationship=0
+  expect(trips[0].scheduleRelationship).toBe(0);
 });
 
 // ── ROUTE_TO_LINE mapping ─────────────────────────────────────────────────────

@@ -48,41 +48,46 @@ function decodeTripUpdates(buffer) {
   const feedTimestamp = new Date(feedTimestampSec * 1000);
 
   const trips = (feed.entity ?? [])
-    .filter(e => {
-      if (!e.tripUpdate) return false;
-      // scheduleRelationship 0 = SCHEDULED, null/undefined treated as SCHEDULED
-      // SR=2 (UNSCHEDULED/NR) excluded
-      const sr = e.tripUpdate.trip?.scheduleRelationship;
-      return sr === 0 || sr == null;
-    })
+    .filter(e => e.tripUpdate)
     .map(e => {
       const tu = e.tripUpdate;
       const trip = tu.trip ?? {};
       const routeId = trip.routeId ?? null;
       const lineCode = (routeId && ROUTE_TO_LINE[routeId]) ?? null;
 
-      // Find the first STU whose timestamp is >= the feed header timestamp.
-      // STUs before that are already stale (median >12 min in the past for WMATA).
+      // scheduleRelationship: 0=SCHEDULED, 1=ADDED, 2=UNSCHEDULED, 3=CANCELED
+      // null/undefined treated as 0 (SCHEDULED)
+      const sr = trip.scheduleRelationship;
+      const scheduleRelationship = (sr != null) ? Number(sr) : null;
+      const isScheduled = sr === 0 || sr == null;
+
+      // Only SCHEDULED trips get a reference stop lookup; non-SCHEDULED trips
+      // have refStopSequence=null so delay computation skips them.
       let refStopId = null;
       let refStopSequence = null;
       let refActualTimeSec = null;
 
-      for (const stu of (tu.stopTimeUpdate ?? [])) {
-        const t = getPresentTime(stu.arrival) ?? getPresentTime(stu.departure);
-        if (t != null && t >= feedTimestampSec) {
-          refStopId = stu.stopId ?? null;
-          refStopSequence = stu.stopSequence != null ? Number(stu.stopSequence) : null;
-          refActualTimeSec = t;
-          break;
+      if (isScheduled) {
+        // Find the first STU whose timestamp is >= the feed header timestamp.
+        // STUs before that are already stale (median >12 min in the past for WMATA).
+        for (const stu of (tu.stopTimeUpdate ?? [])) {
+          const t = getPresentTime(stu.arrival) ?? getPresentTime(stu.departure);
+          if (t != null && t >= feedTimestampSec) {
+            refStopId = stu.stopId ?? null;
+            refStopSequence = stu.stopSequence != null ? Number(stu.stopSequence) : null;
+            refActualTimeSec = t;
+            break;
+          }
         }
       }
 
       return {
-        tripId:          trip.tripId    ?? null,
+        tripId:               trip.tripId    ?? null,
         routeId,
         lineCode,
-        vehicleId:       tu.vehicle?.id ?? null,
-        startDate:       trip.startDate ?? null,
+        vehicleId:            tu.vehicle?.id ?? null,
+        startDate:            trip.startDate ?? null,
+        scheduleRelationship,
         refStopId,
         refStopSequence,
         refActualTimeSec,

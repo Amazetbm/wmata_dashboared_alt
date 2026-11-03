@@ -15,14 +15,16 @@ const trainScheduleSchema = new mongoose.Schema({
 }, { _id: false });
 
 const lineSummarySchema = new mongoose.Schema({
-  lineCode:         { type: String },
-  total:            { type: Number, default: 0 },
-  early:            { type: Number, default: 0 },
-  onTime:           { type: Number, default: 0 },
-  slightDelay:      { type: Number, default: 0 },
-  delay:            { type: Number, default: 0 },
-  significantDelay: { type: Number, default: 0 },
-  noPrediction:     { type: Number, default: 0 },
+  lineCode:     { type: String },
+  total:        { type: Number, default: 0 },
+  early:        { type: Number, default: 0 },
+  onTime:       { type: Number, default: 0 },
+  minor:        { type: Number, default: 0 },
+  significant:  { type: Number, default: 0 },
+  noPrediction: { type: Number, default: 0 },
+  canceled:     { type: Number, default: 0 },
+  unscheduled:  { type: Number, default: 0 },
+  added:        { type: Number, default: 0 },
 }, { _id: false });
 
 const scheduleAdherenceSnapshotSchema = new mongoose.Schema({
@@ -31,13 +33,15 @@ const scheduleAdherenceSnapshotSchema = new mongoose.Schema({
   coverageRate:  { type: Number, default: null },
   degraded:      { type: Boolean, default: false },
   summary: {
-    total:            { type: Number, default: 0 },
-    early:            { type: Number, default: 0 },
-    onTime:           { type: Number, default: 0 },
-    slightDelay:      { type: Number, default: 0 },
-    delay:            { type: Number, default: 0 },
-    significantDelay: { type: Number, default: 0 },
-    noPrediction:     { type: Number, default: 0 },
+    total:        { type: Number, default: 0 },
+    early:        { type: Number, default: 0 },
+    onTime:       { type: Number, default: 0 },
+    minor:        { type: Number, default: 0 },
+    significant:  { type: Number, default: 0 },
+    noPrediction: { type: Number, default: 0 },
+    canceled:     { type: Number, default: 0 },
+    unscheduled:  { type: Number, default: 0 },
+    added:        { type: Number, default: 0 },
   },
   lineSummaries: [lineSummarySchema],
   trains:        [trainScheduleSchema],

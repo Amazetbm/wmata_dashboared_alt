@@ -15,7 +15,7 @@ const GtfsStopTime = require('../models/GtfsStopTime');
 const railGeometry = require('../lib/railGeometry');
 const { decodeVehiclePositions } = require('../lib/gtfsRt');
 const { decodeTripUpdates } = require('../lib/gtfsRt/tripUpdateDecoder');
-const { classifyDelay, DELAY_LABELS } = require('../lib/tripUpdateEnricher');
+const { classifyDelay, classifyScheduleDelay3 } = require('../lib/tripUpdateEnricher');
 const { parseGtfsTime, gtfsToUtc } = require('../lib/gtfsStatic/timeUtils');
 
 const GTFS_RAIL_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
@@ -25,7 +25,10 @@ const GTFS_TRIP_UPDATES_ENABLED = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
 const GTFS_ENABLED = GTFS_RAIL_ENABLED;
 
 // Startup log
-console.log(`[poller] GTFS_RAIL_TRIP_UPDATES=${GTFS_TRIP_UPDATES_ENABLED}`);
+[
+  'GTFS_RAIL_OCCUPANCY', 'GTFS_BUS_OCCUPANCY', 'GTFS_RAIL_SCHEDULE', 'GTFS_RAIL_TRIP_UPDATES',
+  'SCHEDULE_EARLY_SEC', 'SCHEDULE_ONTIME_SEC', 'SCHEDULE_MINOR_SEC',
+].forEach(k => console.log(`[poller] ${k}=${process.env[k] ?? '(unset)'}`));
 if (GTFS_TRIP_UPDATES_ENABLED) {
   console.log(`[poller]   VP join: ${GTFS_RAIL_ENABLED ? 'ENABLED (rail VP feed)' : 'DISABLED (fallback to TU vehicle.id)'}`);
 }
@@ -35,78 +38,86 @@ let railOccupancyAvailable = null;
 let busOccupancyAvailable  = null;
 
 /**
- * Map a delay label string to a summary stat key.
- */
-function labelToKey(label) {
-  switch (label) {
-    case DELAY_LABELS.early:            return 'early';
-    case DELAY_LABELS.onTime:           return 'onTime';
-    case DELAY_LABELS.slightDelay:      return 'slightDelay';
-    case DELAY_LABELS.delay:            return 'delay';
-    case DELAY_LABELS.significantDelay: return 'significantDelay';
-    default:                            return 'noPrediction';
-  }
-}
-
-/**
- * Compute a schedule adherence snapshot from live train positions and enriched
- * trip objects (after VP join and delay computation).  Pure function — no DB.
+ * Compute a schedule adherence snapshot from enriched trip objects
+ * (after VP join and delay computation).  Pure function — no DB.
  *
- * @param {object[]} trainPositions  - raw WMATA TrainPositions
- * @param {object[]} trips           - enriched trip objects with trainId/vehicleId/delaySeconds/delayLabel
+ * Trips are bucketed by scheduleRelationship first:
+ *   SR=3 (CANCELED)     → canceled counter
+ *   SR=2 (UNSCHEDULED)  → unscheduled counter
+ *   SR=1 (ADDED)        → added counter
+ *   SR=0/null (SCHEDULED) → 3-bucket delay classification
+ *
+ * summary.total counts SCHEDULED trips only.
+ *
+ * @param {object[]} rawTrips    - decoded trips with trainId/vehicleId/delaySeconds/delayLabel/scheduleRelationship
  * @param {boolean}  degraded
- * @param {number}   coverageRate    - fraction [0,1] of trips matched to static schedule
+ * @param {number}   coverageRate  - fraction [0,1] of trips matched to static schedule
  * @returns {object}  Payload for ScheduleAdherenceSnapshot.create (minus snapshotAt/feedTimestamp)
  */
-function computeScheduleAdherence(trainPositions, trips, degraded, coverageRate) {
-  const byTrainId   = new Map();
-  const byVehicleId = new Map();
-  for (const t of trips) {
-    if (t.trainId)   byTrainId.set(String(t.trainId), t);
-    if (t.vehicleId) byVehicleId.set(String(t.vehicleId), t);
-  }
-
-  const normalTrains = trainPositions.filter(t => t.ServiceType === 'Normal' && t.LineCode);
-  const summary = { total: 0, early: 0, onTime: 0, slightDelay: 0, delay: 0, significantDelay: 0, noPrediction: 0 };
+function computeScheduleAdherence(rawTrips, degraded, coverageRate) {
+  const summary = {
+    total: 0, early: 0, onTime: 0, minor: 0, significant: 0,
+    noPrediction: 0, canceled: 0, unscheduled: 0, added: 0,
+  };
   const byLine  = {};
   const trainRecords = [];
 
-  for (const t of normalTrains) {
-    const id = String(t.TrainId);
-    const tu  = byTrainId.get(id) ?? byVehicleId.get(id) ?? null;
-    const label = tu?.delayLabel ?? null;
-    const key   = labelToKey(label);
-
-    summary.total++;
-    summary[key]++;
-
-    if (!byLine[t.LineCode]) {
-      byLine[t.LineCode] = {
-        lineCode: t.LineCode,
-        total: 0, early: 0, onTime: 0, slightDelay: 0, delay: 0, significantDelay: 0, noPrediction: 0,
+  function ensureLine(lineCode) {
+    if (!byLine[lineCode]) {
+      byLine[lineCode] = {
+        lineCode,
+        total: 0, early: 0, onTime: 0, minor: 0, significant: 0,
+        noPrediction: 0, canceled: 0, unscheduled: 0, added: 0,
       };
     }
-    byLine[t.LineCode].total++;
-    byLine[t.LineCode][key]++;
+    return byLine[lineCode];
+  }
 
-    trainRecords.push({
-      trainId:         t.TrainId,
-      trainNumber:     t.TrainNumber,
-      lineCode:        t.LineCode,
-      directionNum:    t.DirectionNum,
-      circuitId:       t.CircuitId,
-      tripId:          tu?.tripId ?? null,
-      delaySeconds:    tu?.delaySeconds ?? null,
-      delayLabel:      label,
-      destinationCode: t.DestinationStationCode ?? t.DestinationCode ?? null,
-    });
+  for (const trip of rawTrips) {
+    const sr = trip.scheduleRelationship ?? 0;
+    const lineCode = trip.lineCode;
+
+    if (sr === 3) {
+      summary.canceled++;
+      if (lineCode) ensureLine(lineCode).canceled++;
+    } else if (sr === 2) {
+      summary.unscheduled++;
+      if (lineCode) ensureLine(lineCode).unscheduled++;
+    } else if (sr === 1) {
+      summary.added++;
+      if (lineCode) ensureLine(lineCode).added++;
+    } else {
+      // SCHEDULED (sr=0 or null)
+      summary.total++;
+      if (lineCode) ensureLine(lineCode).total++;
+
+      if (trip.delaySeconds != null) {
+        const bucket = classifyScheduleDelay3(trip.delaySeconds);
+        summary[bucket]++;
+        if (lineCode) ensureLine(lineCode)[bucket]++;
+      } else {
+        summary.noPrediction++;
+        if (lineCode) ensureLine(lineCode).noPrediction++;
+      }
+
+      if (trip.trainId) {
+        trainRecords.push({
+          trainId:         trip.trainId,
+          trainNumber:     null,
+          lineCode:        trip.lineCode,
+          directionNum:    null,
+          circuitId:       null,
+          tripId:          trip.tripId ?? null,
+          delaySeconds:    trip.delaySeconds ?? null,
+          delayLabel:      trip.delayLabel ?? null,
+          destinationCode: null,
+        });
+      }
+    }
   }
 
   const withDelay = trainRecords.filter(t => t.delaySeconds !== null).length;
-  const withDelayPct = normalTrains.length > 0
-    ? ((withDelay / normalTrains.length) * 100).toFixed(1)
-    : '0.0';
-  console.log(`[poller] Schedule adherence: ${withDelay}/${normalTrains.length} trains with delay (${withDelayPct}%), degraded=${degraded}`);
+  console.log(`[poller] Schedule adherence: ${summary.total} scheduled, ${withDelay} with delay, canceled=${summary.canceled}, degraded=${degraded}`);
 
   return {
     summary,
@@ -373,13 +384,11 @@ async function fetchAndStore() {
           }
 
           // Compute and persist schedule adherence snapshot
-          if (trainPositions.length) {
-            try {
-              const sas = computeScheduleAdherence(trainPositions, rawTrips, degraded, matchRate);
-              await ScheduleAdherenceSnapshot.create({ snapshotAt, feedTimestamp: tuFeedTs, ...sas });
-            } catch (err) {
-              console.error('[poller] ScheduleAdherence computation error:', err.message);
-            }
+          try {
+            const sas = computeScheduleAdherence(rawTrips, degraded, matchRate);
+            await ScheduleAdherenceSnapshot.create({ snapshotAt, feedTimestamp: tuFeedTs, ...sas });
+          } catch (err) {
+            console.error('[poller] ScheduleAdherence computation error:', err.message);
           }
         } else {
           // No active GTFS static version — save trips with null delays, skip adherence snapshot

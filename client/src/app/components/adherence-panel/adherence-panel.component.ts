@@ -16,6 +16,7 @@ const LINE_COLORS: Record<string, string> = {
 
 type View = 'live' | 'historical';
 type Preset = '3h' | '24h' | '7d' | 'custom';
+type AdherenceMode = 'headway' | 'schedule';
 
 interface TrainAdherence {
   trainId: string; trainNumber: string; lineCode: string;
@@ -24,11 +25,23 @@ interface TrainAdherence {
   status: 'on-time' | 'minor' | 'significant'; carCount: number;
 }
 
+interface ScheduleTrain {
+  trainId: string; trainNumber: string | null; lineCode: string;
+  directionNum: number | null; tripId: string | null;
+  delaySeconds: number | null; delayLabel: string | null;
+}
+
 interface Summary { total: number; onTime: number; minor: number; significant: number; }
+interface ScheduleSummary {
+  total: number; early: number; onTime: number; minor: number; significant: number;
+  noPrediction: number; canceled: number; unscheduled: number; added: number;
+}
+
 interface HistSnap { snapshotAt: string; summary: Summary; }
+interface ScheduleHistSnap { snapshotAt: string; summary: ScheduleSummary; }
 interface BucketPoint {
   label: string; fromTs: Date; toTs: Date;
-  onTimePct: number; minorPct: number; significantPct: number;
+  onTimePct: number; minorPct: number; significantPct: number; earlyPct: number;
 }
 
 @Component({
@@ -46,7 +59,11 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   lines = ['', 'RD', 'BL', 'YL', 'OR', 'GR', 'SV'];
   lineColors = LINE_COLORS;
 
-  // ── Live ────────────────────────────────────────────────────────────
+  // ── Adherence mode ──────────────────────────────────────────────────
+  scheduleMode = signal<AdherenceMode>('headway');
+  scheduleAvailable = signal(false);
+
+  // ── Live (headway) ──────────────────────────────────────────────────
   allTrains = signal<TrainAdherence[]>([]);
   filtered = signal<TrainAdherence[]>([]);
   summary = signal<Summary>({ total: 0, onTime: 0, minor: 0, significant: 0 });
@@ -54,6 +71,15 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   error = signal('');
   snapshotAt = signal<string | null>(null);
   private destroyRef = inject(DestroyRef);
+
+  // ── Live (schedule) ─────────────────────────────────────────────────
+  scheduleTrains = signal<ScheduleTrain[]>([]);
+  scheduleFiltered = signal<ScheduleTrain[]>([]);
+  scheduleSummary = signal<ScheduleSummary>({ total: 0, early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0 });
+  canceledCount = signal(0);
+  unscheduledCount = signal(0);
+  degraded = signal(false);
+  coverageRate = signal<number | null>(null);
 
   // ── Historical ──────────────────────────────────────────────────────
   preset: Preset = '3h';
@@ -93,32 +119,73 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   constructor(private wmata: WmataService) {}
 
   ngOnInit() {
+    // One-time schedule availability probe (synchronous HTTP — no timer).
+    // Sets scheduleAvailable and pre-loads schedule data if the feed has data.
+    this.wmata.getLiveScheduleAdherence().pipe(
+      catchError(() => EMPTY),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(data => this.handleScheduleData(data));
+
+    // Main live polling: headway endpoint in 'headway' mode, schedule endpoint
+    // in 'schedule' mode.  Mode is checked on each tick so switching takes
+    // effect on the next 30 s refresh.
     timer(0, 30_000).pipe(
-      switchMap(() => this.wmata.getLiveAdherence().pipe(
-        catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
-      )),
+      switchMap(() => {
+        if (this.scheduleMode() === 'schedule') {
+          return this.wmata.getLiveScheduleAdherence().pipe(
+            catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
+          );
+        }
+        return this.wmata.getLiveAdherence().pipe(
+          catchError(err => { this.error.set(err.message); this.loading.set(false); return EMPTY; })
+        );
+      }),
       takeUntilDestroyed(this.destroyRef)
     ).subscribe(data => {
-      this.allTrains.set(data.trains || []);
-      this.summary.set(data.summary || { total: 0, onTime: 0, minor: 0, significant: 0 });
-      this.snapshotAt.set(data.snapshotAt || null);
-      this.applyFilter();
+      if (this.scheduleMode() === 'schedule') {
+        this.handleScheduleData(data);
+      } else {
+        this.allTrains.set(data.trains || []);
+        this.summary.set(data.summary || { total: 0, onTime: 0, minor: 0, significant: 0 });
+        this.snapshotAt.set(data.snapshotAt || null);
+        this.applyFilter();
+      }
       this.loading.set(false);
       this.error.set('');
     });
+
     this.setPresetDates('3h');
+  }
+
+  private handleScheduleData(data: any) {
+    if ((data?.summary?.total ?? 0) > 0) {
+      this.scheduleAvailable.set(true);
+      this.scheduleSummary.set(data.summary);
+      this.scheduleTrains.set(data.trains || []);
+      this.applyScheduleFilter();
+      this.canceledCount.set(data.summary?.canceled ?? 0);
+      this.unscheduledCount.set(data.summary?.unscheduled ?? 0);
+      this.degraded.set(data.degraded ?? false);
+      this.coverageRate.set(data.coverageRate ?? null);
+    }
   }
 
   ngOnDestroy() {
     this.chart?.destroy();
   }
 
-  // ── Live ────────────────────────────────────────────────────────────
+  // ── Live (headway) ──────────────────────────────────────────────────
 
   applyFilter() {
     this.filtered.set(this.selectedLine
       ? this.allTrains().filter(t => t.lineCode === this.selectedLine)
       : this.allTrains());
+  }
+
+  applyScheduleFilter() {
+    this.scheduleFiltered.set(this.selectedLine
+      ? this.scheduleTrains().filter(t => t.lineCode === this.selectedLine)
+      : this.scheduleTrains());
   }
 
   // ── View switching ──────────────────────────────────────────────────
@@ -134,11 +201,25 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ── Mode toggle ─────────────────────────────────────────────────────
+
+  switchAdherenceMode(mode: AdherenceMode) {
+    this.scheduleMode.set(mode);
+    this.hasFetched.set(false);
+    this.buckets.set([]);
+    this.drillBucket.set(null);
+    this.drillTrains.set([]);
+    if (this.view === 'historical') {
+      this.fetchHistory();
+    }
+  }
+
   // ── Shared line filter ──────────────────────────────────────────────
 
   onLineChange() {
     if (this.view === 'live') {
       this.applyFilter();
+      this.applyScheduleFilter();
     } else {
       this.fetchHistory();
     }
@@ -172,11 +253,15 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
     this.drillBucket.set(null);
     this.drillTrains.set([]);
 
-    this.wmata.getHistoricalAdherence(
-      new Date(this.from).toISOString(),
-      new Date(this.to).toISOString(),
-      this.selectedLine || undefined
-    ).subscribe({
+    const fromIso = new Date(this.from).toISOString();
+    const toIso   = new Date(this.to).toISOString();
+    const line    = this.selectedLine || undefined;
+
+    const hist$ = this.scheduleMode() === 'schedule'
+      ? this.wmata.getHistoricalScheduleAdherence(fromIso, toIso, line)
+      : this.wmata.getHistoricalAdherence(fromIso, toIso, line);
+
+    hist$.subscribe({
       next: data => {
         const snaps = Array.isArray(data) ? data : [];
         this.histSnapshots.set(snaps);
@@ -189,7 +274,7 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
     });
   }
 
-  private buildBuckets(snapshots: HistSnap[]): BucketPoint[] {
+  private buildBuckets(snapshots: any[]): BucketPoint[] {
     if (!snapshots.length) return [];
 
     const first = new Date(snapshots[0].snapshotAt).getTime();
@@ -201,7 +286,7 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
       rangeMs <= 48 * 3600_000 ? 30 * 60_000 :
                                   3 * 3600_000;
 
-    const map = new Map<number, HistSnap[]>();
+    const map = new Map<number, any[]>();
     for (const snap of snapshots) {
       const key = Math.floor(new Date(snap.snapshotAt).getTime() / bucketMs) * bucketMs;
       if (!map.has(key)) map.set(key, []);
@@ -213,15 +298,16 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
       .map(([key, snaps]) => {
         const valid = snaps.filter(s => (s.summary?.total ?? 0) > 0);
         if (!valid.length) return null;
-        const avg = (fn: (s: HistSnap) => number) =>
+        const avg = (fn: (s: any) => number) =>
           Math.round(valid.reduce((a, s) => a + fn(s), 0) / valid.length);
         return {
           label: this.bucketLabel(key, rangeMs),
           fromTs: new Date(key),
           toTs: new Date(key + bucketMs),
-          onTimePct:      avg(s => Math.round(s.summary.onTime      / s.summary.total * 100)),
-          minorPct:       avg(s => Math.round(s.summary.minor       / s.summary.total * 100)),
-          significantPct: avg(s => Math.round(s.summary.significant / s.summary.total * 100)),
+          onTimePct:      avg(s => Math.round((s.summary.onTime      ?? 0) / s.summary.total * 100)),
+          minorPct:       avg(s => Math.round((s.summary.minor       ?? 0) / s.summary.total * 100)),
+          significantPct: avg(s => Math.round((s.summary.significant ?? 0) / s.summary.total * 100)),
+          earlyPct:       avg(s => Math.round((s.summary.early       ?? 0) / s.summary.total * 100)),
         };
       })
       .filter((b): b is BucketPoint => b !== null);
@@ -355,7 +441,11 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
     this.drillTrains.set([]);
 
     const mid = new Date((bucket.fromTs.getTime() + bucket.toTs.getTime()) / 2).toISOString();
-    this.wmata.getAdherenceSnapshot(mid).subscribe({
+    const snap$ = this.scheduleMode() === 'schedule'
+      ? this.wmata.getScheduleAdherenceSnapshot(mid)
+      : this.wmata.getAdherenceSnapshot(mid);
+
+    snap$.subscribe({
       next: (data: any) => {
         let trains: TrainAdherence[] = data?.trains || [];
         if (this.selectedLine) trains = trains.filter(t => t.lineCode === this.selectedLine);
@@ -369,6 +459,22 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
   closeDrill() {
     this.drillBucket.set(null);
     this.drillTrains.set([]);
+  }
+
+  // ── Schedule summary helpers ─────────────────────────────────────────
+
+  schedulePct(n: number): number {
+    const s = this.scheduleSummary();
+    return s.total > 0 ? Math.round((n / s.total) * 100) : 0;
+  }
+
+  scheduleDelayBucket(label: string | null): string {
+    if (!label) return '';
+    const l = label.toLowerCase();
+    if (l.includes('early')) return 'early';
+    if (l.includes('slight') || l.includes('minor')) return 'minor';
+    if (l.includes('significant') || l.includes('delay')) return 'significant';
+    return 'on-time';
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────

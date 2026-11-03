@@ -53,56 +53,64 @@ async function getScheduleAdherence({ mode = 'live', method = 'headway', from, t
   if (!snapshots.length) return { from, to, snapshotCount: 0, averages: null, lineTrends: {} };
 
   if (isSchedule) {
-    // Schedule method — aggregate early/onTime/slightDelay/delay/significantDelay/noPrediction
-    const totals     = { early: 0, onTime: 0, slightDelay: 0, delay: 0, significantDelay: 0, noPrediction: 0, total: 0 };
+    // Schedule method — aggregate early/onTime/minor/significant/noPrediction/canceled/unscheduled/added
+    const totals     = { early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0, total: 0 };
     const lineTotals = {};
 
     for (const s of snapshots) {
       const sum = s.summary || {};
       if (sum.total) {
-        totals.early            += sum.early            || 0;
-        totals.onTime           += sum.onTime           || 0;
-        totals.slightDelay      += sum.slightDelay      || 0;
-        totals.delay            += sum.delay            || 0;
-        totals.significantDelay += sum.significantDelay || 0;
-        totals.noPrediction     += sum.noPrediction     || 0;
-        totals.total            += sum.total            || 0;
+        totals.early        += sum.early        || 0;
+        totals.onTime       += sum.onTime       || 0;
+        totals.minor        += sum.minor        || 0;
+        totals.significant  += sum.significant  || 0;
+        totals.noPrediction += sum.noPrediction || 0;
+        totals.canceled     += sum.canceled     || 0;
+        totals.unscheduled  += sum.unscheduled  || 0;
+        totals.added        += sum.added        || 0;
+        totals.total        += sum.total        || 0;
       }
       if (line) {
         const ls = (s.lineSummaries || []).find(l => l.lineCode === line.toUpperCase());
         if (ls && ls.total) {
-          if (!lineTotals[line]) lineTotals[line] = { early: 0, onTime: 0, slightDelay: 0, delay: 0, significantDelay: 0, noPrediction: 0, total: 0 };
-          lineTotals[line].early            += ls.early            || 0;
-          lineTotals[line].onTime           += ls.onTime           || 0;
-          lineTotals[line].slightDelay      += ls.slightDelay      || 0;
-          lineTotals[line].delay            += ls.delay            || 0;
-          lineTotals[line].significantDelay += ls.significantDelay || 0;
-          lineTotals[line].noPrediction     += ls.noPrediction     || 0;
-          lineTotals[line].total            += ls.total            || 0;
+          if (!lineTotals[line]) lineTotals[line] = { early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0, total: 0 };
+          lineTotals[line].early        += ls.early        || 0;
+          lineTotals[line].onTime       += ls.onTime       || 0;
+          lineTotals[line].minor        += ls.minor        || 0;
+          lineTotals[line].significant  += ls.significant  || 0;
+          lineTotals[line].noPrediction += ls.noPrediction || 0;
+          lineTotals[line].canceled     += ls.canceled     || 0;
+          lineTotals[line].unscheduled  += ls.unscheduled  || 0;
+          lineTotals[line].added        += ls.added        || 0;
+          lineTotals[line].total        += ls.total        || 0;
         }
       }
     }
 
     const pct = (n, d) => d > 0 ? Math.round(100 * n / d) : 0;
     const averages = totals.total > 0 ? {
-      earlyPct:            pct(totals.early,            totals.total),
-      onTimePct:           pct(totals.onTime,           totals.total),
-      slightDelayPct:      pct(totals.slightDelay,      totals.total),
-      delayPct:            pct(totals.delay,            totals.total),
-      significantDelayPct: pct(totals.significantDelay, totals.total),
-      noPredictionPct:     pct(totals.noPrediction,     totals.total),
+      earlyPct:        pct(totals.early,        totals.total),
+      onTimePct:       pct(totals.onTime,        totals.total),
+      minorPct:        pct(totals.minor,         totals.total),
+      significantPct:  pct(totals.significant,   totals.total),
+      noPredictionPct: pct(totals.noPrediction,  totals.total),
+      canceled:        totals.canceled,
+      unscheduled:     totals.unscheduled,
+      added:           totals.added,
     } : null;
 
     const lineTrends = {};
     for (const [lc, lt] of Object.entries(lineTotals)) {
       if (lt.total > 0) {
         lineTrends[lc] = {
-          earlyPct:            pct(lt.early,            lt.total),
-          onTimePct:           pct(lt.onTime,           lt.total),
-          slightDelayPct:      pct(lt.slightDelay,      lt.total),
-          delayPct:            pct(lt.delay,            lt.total),
-          significantDelayPct: pct(lt.significantDelay, lt.total),
-          noPredictionPct:     pct(lt.noPrediction,     lt.total),
+          earlyPct:        pct(lt.early,        lt.total),
+          onTimePct:       pct(lt.onTime,        lt.total),
+          minorPct:        pct(lt.minor,         lt.total),
+          significantPct:  pct(lt.significant,   lt.total),
+          noPredictionPct: pct(lt.noPrediction,  lt.total),
+          canceled:        lt.canceled,
+          unscheduled:     lt.unscheduled,
+          added:           lt.added,
         };
       }
     }

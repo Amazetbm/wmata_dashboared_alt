@@ -26,6 +26,28 @@ function makeAdherenceResponse(trains: any[] = [], overrides: any = {}) {
   };
 }
 
+function emptyScheduleResponse() {
+  return {
+    trains: [],
+    summary: { total: 0, early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0 },
+    lineSummaries: [],
+    coverageRate: null,
+    degraded: false,
+  };
+}
+
+function makeScheduleResponse(overrides: any = {}) {
+  return {
+    trains: [{ trainId: 'T001', trainNumber: '101', lineCode: 'RD', directionNum: 1, tripId: 'TRIP1', delaySeconds: 30, delayLabel: 'On Time' }],
+    summary: { total: 1, early: 0, onTime: 1, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0 },
+    lineSummaries: [],
+    coverageRate: 0.95,
+    degraded: false,
+    snapshotAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 describe('AdherencePanelComponent', () => {
   let fixture: ComponentFixture<AdherencePanelComponent>;
   let component: AdherencePanelComponent;
@@ -43,6 +65,10 @@ describe('AdherencePanelComponent', () => {
     component = fixture.componentInstance;
     fixture.autoDetectChanges();
     httpMock = TestBed.inject(HttpTestingController);
+
+    // Flush the one-time schedule availability probe (fires synchronously on ngOnInit).
+    // Returns empty data so scheduleAvailable stays false for existing headway tests.
+    httpMock.expectOne('/api/adherence/schedule/live').flush(emptyScheduleResponse());
   });
 
   afterEach(() => {
@@ -176,5 +202,100 @@ describe('AdherencePanelComponent', () => {
     component.fetchHistory();
 
     httpMock.expectNone('/api/adherence/history');
+  });
+
+  // ── Schedule mode tests ──────────────────────────────────────────────────────
+
+  it('toggle is hidden when schedule data is unavailable (default)', async () => {
+    // beforeEach flushed the probe with empty data → scheduleAvailable stays false
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.scheduleAvailable()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.mode-toggle')).toBeNull();
+  });
+
+  it('toggle is shown when scheduleAvailable becomes true', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.scheduleAvailable.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.mode-toggle')).toBeTruthy();
+  });
+
+  it('clicking Schedule button switches polling to /api/adherence/schedule/live on next tick', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Show the toggle and click Schedule
+    component.scheduleAvailable.set(true);
+    fixture.detectChanges();
+
+    const scheduleBtn = fixture.nativeElement
+      .querySelectorAll('.mode-toggle button')[1] as HTMLButtonElement;
+    scheduleBtn.click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.scheduleMode()).toBe('schedule');
+
+    // Next 30 s tick — main polling now uses schedule endpoint
+    await vi.advanceTimersByTimeAsync(30_000);
+    const schedReq = httpMock.expectOne('/api/adherence/schedule/live');
+    schedReq.flush(makeScheduleResponse());
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it('degraded notice is shown when schedule response has degraded: true', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.scheduleAvailable.set(true);
+    component.scheduleMode.set('schedule');
+    component.degraded.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.degraded-notice')).toBeTruthy();
+  });
+
+  it('canceled and unscheduled counts are displayed correctly', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.scheduleAvailable.set(true);
+    component.scheduleMode.set('schedule');
+    component.scheduleSummary.set({
+      total: 10, early: 0, onTime: 7, minor: 2, significant: 1,
+      noPrediction: 0, canceled: 3, unscheduled: 1, added: 0,
+    });
+    component.canceledCount.set(3);
+    component.unscheduledCount.set(1);
+    fixture.detectChanges();
+
+    const chips = fixture.nativeElement.querySelectorAll('.chip');
+    expect(chips.length).toBe(2);
+    expect(chips[0].textContent.trim()).toContain('3 canceled');
+    expect(chips[1].textContent.trim()).toContain('1 unscheduled');
+  });
+
+  it('in schedule mode, historical view calls getHistoricalScheduleAdherence', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.scheduleMode.set('schedule');
+    component.switchView('historical');
+
+    const histReq = httpMock.expectOne(r => r.url === '/api/adherence/schedule/history');
+    histReq.flush([]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.view).toBe('historical');
   });
 });

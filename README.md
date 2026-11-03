@@ -313,6 +313,27 @@ MCP_TRANSPORT=stdio node dist/index.js
 > (NO_DATA_AVAILABLE) for all vehicles. Bus crowding will show as `null` until WMATA populates
 > the field. Use `node server/scripts/probeOccupancy.js bus` to check current feed status.
 
+### GTFS-RT Trip Updates — Schedule Adherence (optional)
+
+Requires `GTFS_RAIL_SCHEDULE=true` (static timetable must be loaded first).
+
+| Variable | Description | Default |
+|---|---|---|
+| `GTFS_RAIL_TRIP_UPDATES` | Fetch WMATA TripUpdates every 30 s and persist `ScheduleAdherenceSnapshot` records | `false` |
+| `SCHEDULE_EARLY_SEC` | Threshold (seconds) below which a train is classified *Early* | `60` (−60 s) |
+| `SCHEDULE_ONTIME_SEC` | Upper bound (seconds) for *On Time* classification | `120` |
+| `SCHEDULE_MINOR_SEC` | Upper bound (seconds) for *Minor Delay* classification | `300` |
+
+When `GTFS_RAIL_TRIP_UPDATES=true` the Schedule Adherence panel in the UI shows a **Headway \| Schedule** toggle once the feed produces data. Canceled, unscheduled, and added trips are counted separately and displayed below the summary bar.
+
+> **Troubleshooting — `MONGODB_URI` not picked up in Docker:**
+> Shell environment variables override `.env` file values. If `MONGODB_URI` is set in your shell it
+> will shadow the `.env` entry. To verify what Docker Compose will use, run:
+> ```
+> docker compose config | Select-String MONGODB_URI
+> ```
+> Unset the shell variable (`unset MONGODB_URI` / remove from your profile) to let the `.env` value take effect.
+
 **Example — Ollama (local):**
 ```env
 LLM_PROVIDER=openai-compatible

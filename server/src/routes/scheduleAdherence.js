@@ -38,7 +38,7 @@ router.get('/history', async (req, res) => {
       const ls = (s.lineSummaries || []).find(l => l.lineCode === line.toUpperCase());
       return {
         snapshotAt: s.snapshotAt,
-        summary: ls || { total: 0, early: 0, onTime: 0, slightDelay: 0, delay: 0, significantDelay: 0, noPrediction: 0 },
+        summary: ls || { total: 0, early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0 },
         lineSummaries: s.lineSummaries,
         coverageRate: s.coverageRate,
         degraded: s.degraded,

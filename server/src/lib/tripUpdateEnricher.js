@@ -16,6 +16,26 @@ const DELAY_LABELS = {
   significantDelay: 'Significant Delay',
 };
 
+// ── 3-bucket classification for schedule adherence ────────────────────────────
+// Maps the 5-label scale to 3 reporting buckets:
+//   Early (≤EARLY_SEC)  →  'early'
+//   On Time             →  'onTime'  (EARLY_SEC < seconds ≤ ONTIME_SEC)
+//   Minor delay         →  'minor'   (ONTIME_SEC < seconds ≤ MINOR_SEC)
+//   Significant delay   →  'significant' (> MINOR_SEC)
+//
+// Thresholds are read once at module load from environment variables so they
+// can be tuned without code changes. Defaults: −60 s / +120 s / +300 s.
+const EARLY_SEC  = -Math.abs(Number(process.env.SCHEDULE_EARLY_SEC)  || 60);
+const ONTIME_SEC =  Number(process.env.SCHEDULE_ONTIME_SEC)  || 120;
+const MINOR_SEC  =  Number(process.env.SCHEDULE_MINOR_SEC)   || 300;
+
+function classifyScheduleDelay3(seconds) {
+  if (seconds <= EARLY_SEC)  return 'early';
+  if (seconds <= ONTIME_SEC) return 'onTime';
+  if (seconds <= MINOR_SEC)  return 'minor';
+  return 'significant';
+}
+
 function classifyDelay(seconds) {
   if (seconds <= -60)  return DELAY_LABELS.early;
   if (seconds < 60)    return DELAY_LABELS.onTime;
@@ -99,6 +119,10 @@ module.exports = {
   buildTripUpdateMap,
   enrichWithTripUpdates,
   classifyDelay,
+  classifyScheduleDelay3,
   DELAY_LABELS,
+  EARLY_SEC,
+  ONTIME_SEC,
+  MINOR_SEC,
   STALE_MS,
 };
