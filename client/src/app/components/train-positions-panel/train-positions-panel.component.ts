@@ -26,6 +26,7 @@ export class TrainPositionsPanelComponent implements OnInit {
   selectedLine = '';
   lines = ['', 'RD', 'BL', 'YL', 'OR', 'GR', 'SV'];
   lineColors = LINE_COLORS;
+  mode = signal<'headway' | 'schedule'>('headway');
   private destroyRef = inject(DestroyRef);
 
   constructor(private wmata: WmataService) {}
@@ -64,6 +65,14 @@ export class TrainPositionsPanelComponent implements OnInit {
 
   get hasScheduleDelay(): boolean {
     return this.filtered().some(t => t.scheduleDelay != null);
+  }
+
+  get showStatusColumn(): boolean {
+    return this.mode() === 'headway';
+  }
+
+  get showDelayColumn(): boolean {
+    return this.mode() === 'schedule' && this.hasScheduleDelay;
   }
 
   occupancyClass(occ: any): string {

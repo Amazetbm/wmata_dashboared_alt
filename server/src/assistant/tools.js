@@ -84,15 +84,16 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_schedule_adherence',
-    description: 'Get schedule adherence data. mode=live returns the latest snapshot with on-time/minor/significant percentages. mode=history returns averaged trend over the range (not raw data). mode=snapshot returns the full snapshot closest to the at timestamp. Thresholds: on-time ≤10% deviation, minor ≤25%, significant >25% of ideal headway.',
+    description: 'Get schedule adherence data. method=headway (default) measures train spacing against ideal headway; statuses are on-time/minor/significant. method=schedule uses GTFS trip-based delay (actual − scheduled arrival); statuses are Early/On Time/Slight Delay/Delay/Significant Delay; requires GTFS_RAIL_TRIP_UPDATES=true; coverageRate and degraded fields indicate data quality; delay fields are null when coverage is low or static schedule is unavailable. mode=live returns the latest snapshot. mode=history returns averaged trend over the range (not raw data). mode=snapshot returns the full snapshot closest to the at timestamp. Headway thresholds: on-time ≤10% deviation, minor ≤25%, significant >25% of ideal headway.',
     inputSchema: {
       type: 'object',
       properties: {
-        mode: { type: 'string', enum: ['live', 'history', 'snapshot'], description: 'live, history, or snapshot' },
-        from: { type: 'string', format: 'date-time', description: 'Required for history' },
-        to:   { type: 'string', format: 'date-time', description: 'Required for history' },
-        at:   { type: 'string', format: 'date-time', description: 'Required for snapshot' },
-        line: { ...LINE_ENUM, description: 'Optional line filter' },
+        mode:   { type: 'string', enum: ['live', 'history', 'snapshot'], description: 'live, history, or snapshot' },
+        method: { type: 'string', enum: ['headway', 'schedule'], description: 'headway (default) or schedule; schedule uses GTFS trip-based delay' },
+        from:   { type: 'string', format: 'date-time', description: 'Required for history' },
+        to:     { type: 'string', format: 'date-time', description: 'Required for history' },
+        at:     { type: 'string', format: 'date-time', description: 'Required for snapshot' },
+        line:   { ...LINE_ENUM, description: 'Optional line filter' },
       },
       required: ['mode'],
     },

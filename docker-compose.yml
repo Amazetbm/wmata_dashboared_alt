@@ -38,6 +38,10 @@ services:
       GTFS_RAIL_OCCUPANCY: ${GTFS_RAIL_OCCUPANCY:-false}
       GTFS_BUS_OCCUPANCY: ${GTFS_BUS_OCCUPANCY:-false}
       GTFS_RAIL_SCHEDULE: ${GTFS_RAIL_SCHEDULE:-false}
+      GTFS_RAIL_TRIP_UPDATES: ${GTFS_RAIL_TRIP_UPDATES:-false}
+      SCHEDULE_EARLY_SEC: ${SCHEDULE_EARLY_SEC:-}
+      SCHEDULE_ONTIME_SEC: ${SCHEDULE_ONTIME_SEC:-}
+      SCHEDULE_MINOR_SEC: ${SCHEDULE_MINOR_SEC:-}
     depends_on:
       mongo:
         condition: service_healthy

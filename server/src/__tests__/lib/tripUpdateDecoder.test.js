@@ -19,14 +19,14 @@ function scheduledTrip(overrides = {}) {
     id: overrides.id ?? 'e1',
     tripUpdate: {
       trip: {
-        tripId: overrides.tripId ?? 'T100',
-        routeId: overrides.routeId ?? 'RED',
-        directionId: 0,
-        startDate: '20261102',
-        startTime: '08:00:00',
-        scheduleRelationship: 0, // SCHEDULED
+        tripId:               overrides.tripId   ?? 'T100',
+        routeId:              overrides.routeId  ?? 'RED',
+        directionId:          0,
+        startDate:            overrides.startDate ?? '20261102',
+        startTime:            '08:00:00',
+        scheduleRelationship: overrides.sr ?? 0, // SCHEDULED
       },
-      vehicle: { id: overrides.vehicleId ?? 'V001' },
+      vehicle:        { id: overrides.vehicleId ?? 'V001' },
       stopTimeUpdate: overrides.stus ?? [],
     },
   };
@@ -37,17 +37,18 @@ function scheduledTrip(overrides = {}) {
 test('extracts feedTimestamp from header.timestamp', () => {
   const ts = 1700000000;
   const buf = buildFeed({ timestamp: ts });
-  const { feedTimestamp } = decodeTripUpdates(buf);
+  const { feedTimestamp, feedTimestampSec } = decodeTripUpdates(buf);
   expect(feedTimestamp.getTime()).toBe(ts * 1000);
+  expect(feedTimestampSec).toBe(ts);
 });
 
 test('uses current time when header.timestamp is 0', () => {
-  const before = Date.now();
+  const before = Math.floor(Date.now() / 1000);
   const buf = buildFeed({ timestamp: 0 });
-  const { feedTimestamp } = decodeTripUpdates(buf);
-  const after = Date.now();
-  expect(feedTimestamp.getTime()).toBeGreaterThanOrEqual(before);
-  expect(feedTimestamp.getTime()).toBeLessThanOrEqual(after);
+  const { feedTimestampSec } = decodeTripUpdates(buf);
+  const after = Math.floor(Date.now() / 1000);
+  expect(feedTimestampSec).toBeGreaterThanOrEqual(before);
+  expect(feedTimestampSec).toBeLessThanOrEqual(after);
 });
 
 // ── empty feed ────────────────────────────────────────────────────────────────
@@ -58,28 +59,51 @@ test('returns empty trips array for empty feed', () => {
   expect(trips).toEqual([]);
 });
 
-// ── ADDED trip excluded ───────────────────────────────────────────────────────
+// ── Non-SCHEDULED trips passed through with correct scheduleRelationship ──────
 
-test('skips ADDED trips (scheduleRelationship=1)', () => {
+test('passes through UNSCHEDULED trip (SR=2) with scheduleRelationship=2', () => {
   const buf = buildFeed({
     timestamp: 1700000000,
+    entities: [scheduledTrip({ sr: 2, tripId: 'T_NR' })],
+  });
+  const { trips } = decodeTripUpdates(buf);
+  expect(trips).toHaveLength(1);
+  expect(trips[0].scheduleRelationship).toBe(2);
+  expect(trips[0].tripId).toBe('T_NR');
+  // Non-SCHEDULED → no reference stop lookup
+  expect(trips[0].refStopSequence).toBeNull();
+  expect(trips[0].refActualTimeSec).toBeNull();
+});
+
+test('passes through ADDED trip (SR=1) with scheduleRelationship=1', () => {
+  const buf = buildFeed({
+    timestamp: 1700000000,
+    entities: [scheduledTrip({ sr: 1, tripId: 'T_ADDED' })],
+  });
+  const { trips } = decodeTripUpdates(buf);
+  expect(trips).toHaveLength(1);
+  expect(trips[0].scheduleRelationship).toBe(1);
+  expect(trips[0].refStopSequence).toBeNull();
+});
+
+test('passes through CANCELED trip (SR=3) with scheduleRelationship=3 and no reference stop', () => {
+  const feedTs = 1700000000;
+  const buf = buildFeed({
+    timestamp: feedTs,
     entities: [
-      {
-        id: 'e_added',
-        tripUpdate: {
-          trip: {
-            tripId: 'T_ADDED',
-            routeId: 'BLUE',
-            scheduleRelationship: 1, // ADDED
-          },
-          vehicle: { id: 'V999' },
-          stopTimeUpdate: [],
-        },
-      },
+      scheduledTrip({
+        sr: 3,
+        tripId: 'T_CANCELED',
+        // STUs present but should be ignored for non-SCHEDULED
+        stus: [{ stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: feedTs + 200 } }],
+      }),
     ],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips).toHaveLength(0);
+  expect(trips).toHaveLength(1);
+  expect(trips[0].scheduleRelationship).toBe(3);
+  expect(trips[0].refStopSequence).toBeNull();
+  expect(trips[0].refActualTimeSec).toBeNull();
 });
 
 // ── SCHEDULED trip included ───────────────────────────────────────────────────
@@ -94,6 +118,8 @@ test('includes SCHEDULED trip and maps routeId to lineCode', () => {
   expect(trips[0].routeId).toBe('RED');
   expect(trips[0].lineCode).toBe('RD');
   expect(trips[0].vehicleId).toBe('V001');
+  // SR=0 → scheduleRelationship=0
+  expect(trips[0].scheduleRelationship).toBe(0);
 });
 
 test('includes trip when scheduleRelationship is absent (null treated as SCHEDULED)', () => {
@@ -113,14 +139,16 @@ test('includes trip when scheduleRelationship is absent (null treated as SCHEDUL
   const { trips } = decodeTripUpdates(buf);
   expect(trips).toHaveLength(1);
   expect(trips[0].lineCode).toBe('BL');
+  // Absent SR in protobuf3 → decoded as default value 0; scheduleRelationship=0
+  expect(trips[0].scheduleRelationship).toBe(0);
 });
 
 // ── ROUTE_TO_LINE mapping ─────────────────────────────────────────────────────
 
 test.each([
-  ['RED', 'RD'],
-  ['BLUE', 'BL'],
-  ['GREEN', 'GR'],
+  ['RED',    'RD'],
+  ['BLUE',   'BL'],
+  ['GREEN',  'GR'],
   ['YELLOW', 'YL'],
   ['ORANGE', 'OR'],
   ['SILVER', 'SV'],
@@ -142,105 +170,119 @@ test('lineCode is null for unknown routeId', () => {
   expect(trips[0].lineCode).toBeNull();
 });
 
-// ── STU extraction ────────────────────────────────────────────────────────────
+// ── startDate passed through ──────────────────────────────────────────────────
 
-test('extracts STU fields including arrivalTime, departureTime, delays', () => {
-  const arrTs = 1700001000;
-  const depTs = 1700000800;
+test('startDate is passed through from trip proto', () => {
   const buf = buildFeed({
     timestamp: 1700000000,
+    entities: [scheduledTrip({ startDate: '20261102' })],
+  });
+  const { trips } = decodeTripUpdates(buf);
+  expect(trips[0].startDate).toBe('20261102');
+});
+
+// ── First future STU selection ────────────────────────────────────────────────
+
+test('refActualTimeSec is first STU with time >= feedTimestampSec (arrival)', () => {
+  const feedTs = 1700000000;
+  const buf = buildFeed({
+    timestamp: feedTs,
     entities: [
       scheduledTrip({
         stus: [
-          {
-            stopId: 'PF_A15_C',
-            stopSequence: 1,
-            departure: { time: depTs, delay: 30 },  // origin: departure only
-          },
-          {
-            stopId: 'PF_A16_B',
-            stopSequence: 2,
-            arrival: { time: arrTs, delay: 45 },
-          },
+          // past: feedTs - 100
+          { stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: feedTs - 100 } },
+          // future: feedTs + 200 ← should pick this
+          { stopId: 'PF_A02_C', stopSequence: 2, arrival: { time: feedTs + 200 } },
+          { stopId: 'PF_A03_C', stopSequence: 3, arrival: { time: feedTs + 500 } },
         ],
       }),
     ],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips[0].stus).toHaveLength(2);
-
-  // First STU: departure only
-  expect(trips[0].stus[0].stopId).toBe('PF_A15_C');
-  expect(trips[0].stus[0].stopSequence).toBe(1);
-  expect(trips[0].stus[0].arrivalTime).toBeNull();
-  expect(trips[0].stus[0].departureTime).toEqual(new Date(depTs * 1000));
-  expect(trips[0].stus[0].arrivalDelay).toBeNull();
-  expect(trips[0].stus[0].departureDelay).toBe(30);
-
-  // Second STU: arrival
-  expect(trips[0].stus[1].arrivalTime).toEqual(new Date(arrTs * 1000));
-  expect(trips[0].stus[1].arrivalDelay).toBe(45);
+  expect(trips[0].refStopSequence).toBe(2);
+  expect(trips[0].refStopId).toBe('PF_A02_C');
+  expect(trips[0].refActualTimeSec).toBe(feedTs + 200);
 });
 
-// ── currentDelaySeconds — origin pattern (departure only) ────────────────────
-
-test('currentDelaySeconds uses departureDelay when first STU has no arrivalDelay', () => {
+test('refActualTimeSec uses departure when no arrival.time present', () => {
+  const feedTs = 1700000000;
   const buf = buildFeed({
-    timestamp: 1700000000,
+    timestamp: feedTs,
     entities: [
       scheduledTrip({
         stus: [
-          { stopId: 'PF_A01_C', stopSequence: 1, departure: { time: 1700000800, delay: 30 } },
-          { stopId: 'PF_A02_B', stopSequence: 2, arrival: { time: 1700001200, delay: 45 } },
+          { stopId: 'PF_A01_C', stopSequence: 1, departure: { time: feedTs + 60 } },
         ],
       }),
     ],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips[0].currentDelaySeconds).toBe(30);
+  expect(trips[0].refActualTimeSec).toBe(feedTs + 60);
+  expect(trips[0].refStopSequence).toBe(1);
 });
 
-test('currentDelaySeconds uses arrivalDelay when present on first STU', () => {
+test('all past STUs → refStopSequence null and refActualTimeSec null (noPrediction)', () => {
+  const feedTs = 1700000000;
   const buf = buildFeed({
-    timestamp: 1700000000,
+    timestamp: feedTs,
     entities: [
       scheduledTrip({
         stus: [
-          { stopId: 'PF_A02_B', stopSequence: 1, arrival: { time: 1700001200, delay: 120 } },
+          { stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: feedTs - 800 } },
+          { stopId: 'PF_A02_C', stopSequence: 2, arrival: { time: feedTs - 200 } },
         ],
       }),
     ],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips[0].currentDelaySeconds).toBe(120);
+  expect(trips[0].refStopSequence).toBeNull();
+  expect(trips[0].refActualTimeSec).toBeNull();
+  expect(trips[0].refStopId).toBeNull();
 });
 
-test('currentDelaySeconds is null when no STUs', () => {
+test('no STUs → refStopSequence null (noPrediction)', () => {
+  const feedTs = 1700000000;
   const buf = buildFeed({
-    timestamp: 1700000000,
+    timestamp: feedTs,
     entities: [scheduledTrip({ stus: [] })],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips[0].currentDelaySeconds).toBeNull();
+  expect(trips[0].refStopSequence).toBeNull();
+  expect(trips[0].refActualTimeSec).toBeNull();
 });
 
-// ── timestamp 0 treated as null ───────────────────────────────────────────────
+// ── Field presence: absence of time field treated as null ────────────────────
 
-test('timestamp 0 treated as null (arrivalTime null)', () => {
+test('arrival.time=0 treated as null (not a real timestamp)', () => {
+  const feedTs = 1700000000;
   const buf = buildFeed({
-    timestamp: 1700000000,
+    timestamp: feedTs,
     entities: [
       scheduledTrip({
         stus: [
-          { stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: 0, delay: 60 } },
+          { stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: 0 } },
+          { stopId: 'PF_A02_C', stopSequence: 2, arrival: { time: feedTs + 100 } },
         ],
       }),
     ],
   });
   const { trips } = decodeTripUpdates(buf);
-  expect(trips[0].stus[0].arrivalTime).toBeNull();
-  // delay still extracted
-  expect(trips[0].stus[0].arrivalDelay).toBe(60);
+  // time=0 should be ignored; first real future STU is seq 2
+  expect(trips[0].refStopSequence).toBe(2);
+  expect(trips[0].refActualTimeSec).toBe(feedTs + 100);
+});
+
+// ── Slim output — no stus array ───────────────────────────────────────────────
+
+test('returned trip has no stus field', () => {
+  const buf = buildFeed({
+    timestamp: 1700000000,
+    entities: [scheduledTrip({ stus: [{ stopId: 'PF_A01_C', stopSequence: 1, arrival: { time: 1700001000 } }] })],
+  });
+  const { trips } = decodeTripUpdates(buf);
+  expect(trips[0]).not.toHaveProperty('stus');
+  expect(trips[0]).not.toHaveProperty('currentDelaySeconds');
 });
 
 // ── vehicle.id location ───────────────────────────────────────────────────────

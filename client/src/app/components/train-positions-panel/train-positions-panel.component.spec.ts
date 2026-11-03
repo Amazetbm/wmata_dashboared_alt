@@ -120,14 +120,55 @@ describe('TrainPositionsPanelComponent', () => {
     expect(ths.find(th => th.textContent?.includes('Crowding'))).toBeTruthy();
   });
 
+  // ── Mode toggle — headway (default) ─────────────────────────────────────────
+
+  it('default mode is headway: Status column visible, Delay column absent', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/trains/located');
+    req.flush({ trains: [makeTrain({ scheduleDelay: { seconds: 200, label: 'Slight Delay' } })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.mode()).toBe('headway');
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.trim() === 'Status')).toBeTruthy();
+    expect(ths.find(th => th.textContent?.trim() === 'Delay')).toBeFalsy();
+  });
+
+  it('switching to schedule mode shows Delay column, hides Status column when data has delays', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/trains/located');
+    req.flush({ trains: [makeTrain({ scheduleDelay: { seconds: 200, label: 'Slight Delay' } })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.mode.set('schedule');
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.trim() === 'Status')).toBeFalsy();
+    expect(ths.find(th => th.textContent?.trim() === 'Delay')).toBeTruthy();
+  });
+
+  it('showDelayColumn is false in schedule mode when all scheduleDelay null', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/trains/located');
+    req.flush({ trains: [makeTrain({ scheduleDelay: null }), makeTrain({ trainId: 'T002', scheduleDelay: null })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.mode.set('schedule');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.showDelayColumn).toBe(false);
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.trim() === 'Delay')).toBeFalsy();
+  });
+
   it('hasScheduleDelay is false when all scheduleDelay null', async () => {
     await vi.advanceTimersByTimeAsync(0);
     const req = httpMock.expectOne('/api/trains/located');
     req.flush({ trains: [makeTrain({ scheduleDelay: null }), makeTrain({ trainId: 'T002', scheduleDelay: null })] });
     await vi.advanceTimersByTimeAsync(0);
 
-    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
-    expect(ths.find(th => th.textContent?.includes('Delay'))).toBeFalsy();
+    expect(component.hasScheduleDelay).toBe(false);
   });
 
   it('hasScheduleDelay is true when at least one non-null scheduleDelay', async () => {
@@ -136,14 +177,16 @@ describe('TrainPositionsPanelComponent', () => {
     req.flush({ trains: [makeTrain({ scheduleDelay: { seconds: 200, label: 'Slight Delay' } })] });
     await vi.advanceTimersByTimeAsync(0);
 
-    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
-    expect(ths.find(th => th.textContent?.includes('Delay'))).toBeTruthy();
+    expect(component.hasScheduleDelay).toBe(true);
   });
 
-  it('renders delay label in cell when scheduleDelay is non-null', async () => {
+  it('renders delay label in cell when in schedule mode with non-null scheduleDelay', async () => {
     await vi.advanceTimersByTimeAsync(0);
     const req = httpMock.expectOne('/api/trains/located');
     req.flush({ trains: [makeTrain({ scheduleDelay: { seconds: 700, label: 'Significant Delay' } })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.mode.set('schedule');
     await vi.advanceTimersByTimeAsync(0);
 
     const cell = fixture.nativeElement.querySelector('.delay-chip');

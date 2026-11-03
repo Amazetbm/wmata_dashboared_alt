@@ -50,6 +50,7 @@ async function ensureTtlIndexes() {
     'incidents',
     'trainpositions',
     'adherencesnapshots',
+    'scheduleadherencesnapshots',
     'elevatoroutages',
     'railoccupancies',
   ];

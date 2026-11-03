@@ -89,4 +89,19 @@ export class WmataService {
     if (line) params = params.set('line', line);
     return this.http.get(`${this.base}/trains/trip-updates`, { params });
   }
+
+  getLiveScheduleAdherence(): Observable<any> {
+    return this.http.get(`${this.base}/adherence/schedule/live`);
+  }
+
+  getHistoricalScheduleAdherence(from: string, to: string, line?: string): Observable<any> {
+    let params = new HttpParams().set('from', from).set('to', to);
+    if (line) params = params.set('line', line);
+    return this.http.get(`${this.base}/adherence/schedule/history`, { params });
+  }
+
+  getScheduleAdherenceSnapshot(at: string): Observable<any> {
+    const params = new HttpParams().set('at', at);
+    return this.http.get(`${this.base}/adherence/schedule/snapshot`, { params });
+  }
 }
