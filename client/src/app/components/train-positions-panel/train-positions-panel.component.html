@@ -1,6 +1,10 @@
 <div class="panel">
   <h2>Live Train Positions</h2>
   <div class="controls">
+    <div class="mode-toggle">
+      <button [class.active]="mode() === 'headway'" (click)="mode.set('headway')">Headway</button>
+      <button [class.active]="mode() === 'schedule'" (click)="mode.set('schedule')">Schedule</button>
+    </div>
     <label>Filter by Line:</label>
     <select [(ngModel)]="selectedLine" (ngModelChange)="onLineChange()">
       <option value="">All Lines</option>
@@ -16,11 +20,15 @@
         <th>Train</th>
         <th>Line</th>
         <th>Cars</th>
-        <th>Status</th>
+        @if (showStatusColumn) {
+          <th>Status</th>
+        }
         <th>Location</th>
         <th>Destination</th>
         <th *ngIf="hasOccupancy">Crowding</th>
-        <th *ngIf="hasScheduleDelay">Delay</th>
+        @if (showDelayColumn) {
+          <th>Delay</th>
+        }
       </tr>
     </thead>
     <tbody>
@@ -31,9 +39,11 @@
             <span class="line-chip" [style.background]="colorFor(train.lineCode)">{{ train.lineCode }}</span>
           </td>
           <td>{{ train.carCount ?? '—' }}</td>
-          <td>
-            <span class="status-chip" [class]="'status-' + train.status">{{ train.status }}</span>
-          </td>
+          @if (showStatusColumn) {
+            <td>
+              <span class="status-chip" [class]="'status-' + train.status">{{ train.status }}</span>
+            </td>
+          }
           <td class="location">{{ train.location }}</td>
           <td>{{ train.destination }}</td>
           @if (hasOccupancy) {
@@ -45,7 +55,7 @@
               }
             </td>
           }
-          @if (hasScheduleDelay) {
+          @if (showDelayColumn) {
             <td>
               @if (train.scheduleDelay != null) {
                 <span class="delay-chip" [class]="delayClass(train.scheduleDelay)">{{ train.scheduleDelay.label }}</span>
