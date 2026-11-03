@@ -48,7 +48,9 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
   private trainLayer = L.layerGroup();
   private incidentLayer = L.layerGroup();
   private occupancyLayer = L.layerGroup();
+  private scheduleDelayLayer = L.layerGroup();
   private occupancyVisible = true;
+  private scheduleDelayVisible = true;
 
   // Shared incident index kept fresh by rebuildIncidents() so station popup factories read current data
   private incidentsByLine = new Map<string, any[]>();
@@ -96,12 +98,14 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
     this.trainLayer.addTo(this.map);
     this.incidentLayer.addTo(this.map);
     this.occupancyLayer.addTo(this.map);
+    this.scheduleDelayLayer.addTo(this.map);
 
     const layerControl = L.control.layers(
       undefined,
       {
         'Train Positions': this.trainLayer,
         'Occupancy Status': this.occupancyLayer,
+        'Schedule Delay': this.scheduleDelayLayer,
         'Stations': this.stationLayer,
         'Incident Highlights': this.incidentLayer,
       },
@@ -110,9 +114,11 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
 
     this.map.on('overlayadd', (e: any) => {
       if (e.name === 'Occupancy Status') this.occupancyVisible = true;
+      if (e.name === 'Schedule Delay')   this.scheduleDelayVisible = true;
     });
     this.map.on('overlayremove', (e: any) => {
       if (e.name === 'Occupancy Status') this.occupancyVisible = false;
+      if (e.name === 'Schedule Delay')   this.scheduleDelayVisible = false;
     });
   }
 
@@ -144,6 +150,7 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
         this.rebuildIncidents(); // updates incidentsByLine index first
         this.rebuildTrains();
         this.rebuildOccupancy();
+        this.rebuildScheduleDelay();
       },
       error: (err) => console.error('[map-panel refresh]', err),
     });
@@ -171,6 +178,7 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
     this.rebuildIncidents();
     this.rebuildTrains();
     this.rebuildOccupancy();
+    this.rebuildScheduleDelay();
   }
 
   // ── Polylines ─────────────────────────────────────────────────────────────
@@ -356,6 +364,16 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
       root.appendChild(row);
     }
 
+    if (train.scheduleDelay != null) {
+      const row = document.createElement('div');
+      row.className = 'map-popup-detail';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Schedule Delay: ';
+      row.appendChild(strong);
+      row.appendChild(document.createTextNode(`${train.scheduleDelay.seconds}s (${train.scheduleDelay.label})`));
+      root.appendChild(row);
+    }
+
     return root;
   }
 
@@ -385,6 +403,37 @@ export class MapPanelComponent implements AfterViewInit, OnDestroy {
         fill: false,
         interactive: false,
       }).addTo(this.occupancyLayer);
+    }
+  }
+
+  // ── Schedule delay rings ───────────────────────────────────────────────────
+
+  private readonly SCHEDULE_DELAY_COLORS: Record<string, string> = {
+    'Early':             '#2196f3',
+    'On Time':           '#4caf50',
+    'Slight Delay':      '#ffeb3b',
+    'Delay':             '#ff9800',
+    'Significant Delay': '#f44336',
+  };
+
+  private rebuildScheduleDelay(): void {
+    this.scheduleDelayLayer.clearLayers();
+    const trains = this.cachedData.trains as any[];
+
+    for (const train of trains) {
+      if (this.selectedLine !== 'ALL' && train.LineCode !== this.selectedLine) continue;
+      if (train.scheduleDelay == null) continue;
+
+      const ringColor = this.SCHEDULE_DELAY_COLORS[train.scheduleDelay.label];
+      if (!ringColor) continue;
+
+      L.circleMarker([train.lat, train.lon] as L.LatLngExpression, {
+        radius: 12,
+        color: ringColor,
+        weight: 2,
+        fill: false,
+        interactive: false,
+      }).addTo(this.scheduleDelayLayer);
     }
   }
 

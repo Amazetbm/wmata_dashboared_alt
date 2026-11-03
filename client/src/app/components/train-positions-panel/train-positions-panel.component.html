@@ -20,6 +20,7 @@
         <th>Location</th>
         <th>Destination</th>
         <th *ngIf="hasOccupancy">Crowding</th>
+        <th *ngIf="hasScheduleDelay">Delay</th>
       </tr>
     </thead>
     <tbody>
@@ -41,6 +42,15 @@
                 <span class="occ-chip" [class]="occupancyClass(train.occupancy)">{{ train.occupancy.label }}</span>
               } @else {
                 <span class="occ-null">—</span>
+              }
+            </td>
+          }
+          @if (hasScheduleDelay) {
+            <td>
+              @if (train.scheduleDelay != null) {
+                <span class="delay-chip" [class]="delayClass(train.scheduleDelay)">{{ train.scheduleDelay.label }}</span>
+              } @else {
+                <span class="delay-null">—</span>
               }
             </td>
           }

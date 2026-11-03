@@ -62,6 +62,10 @@ export class TrainPositionsPanelComponent implements OnInit {
     return this.filtered().some(t => t.occupancy != null);
   }
 
+  get hasScheduleDelay(): boolean {
+    return this.filtered().some(t => t.scheduleDelay != null);
+  }
+
   occupancyClass(occ: any): string {
     if (occ == null) return 'occ-null';
     switch (occ.status) {
@@ -69,6 +73,18 @@ export class TrainPositionsPanelComponent implements OnInit {
       case 2: return 'occ-few';
       case 5: return 'occ-full';
       default: return 'occ-null';
+    }
+  }
+
+  delayClass(delay: any): string {
+    if (delay == null) return 'delay-null';
+    switch (delay.label) {
+      case 'Early':             return 'delay-early';
+      case 'On Time':           return 'delay-on-time';
+      case 'Slight Delay':      return 'delay-slight';
+      case 'Delay':             return 'delay-moderate';
+      case 'Significant Delay': return 'delay-significant';
+      default:                  return 'delay-null';
     }
   }
 }

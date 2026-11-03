@@ -29,6 +29,7 @@ export function makeTrain(overrides: Partial<{
   status: string;
   carCount: number;
   occupancy: any;
+  scheduleDelay: any;
   lat: number;
   lon: number;
 }> = {}) {
@@ -44,6 +45,7 @@ export function makeTrain(overrides: Partial<{
     status: 'on-time',
     carCount: 6,
     occupancy: null,
+    scheduleDelay: null,
     lat: 38.8971,
     lon: -77.0366,
     ...overrides,

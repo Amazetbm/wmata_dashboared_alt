@@ -2,12 +2,36 @@ const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
 const TrainPosition = require('../models/TrainPosition');
 const RailOccupancy = require('../models/RailOccupancy');
+const TripUpdate = require('../models/TripUpdate');
 const { getTrainPositions } = require('../assistant/toolHandlers/getTrainPositions');
 const { enrichTrainsWithOccupancy } = require('../lib/occupancyEnricher');
+const { enrichWithTripUpdates } = require('../lib/tripUpdateEnricher');
 
 const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
+const GTFS_TRIP_UPDATES_ENABLED = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
 
 const VALID_LINES = new Set(['RD', 'BL', 'OR', 'GR', 'YL', 'SV']);
+
+// Trip updates snapshot
+router.get('/trip-updates', async (req, res) => {
+  if (!GTFS_TRIP_UPDATES_ENABLED) {
+    return res.status(503).json({ error: 'GTFS_RAIL_TRIP_UPDATES not enabled' });
+  }
+  try {
+    const { line } = req.query;
+    let doc = await TripUpdate.findOne().sort({ snapshotAt: -1 }).lean();
+    if (!doc) return res.json({ snapshotAt: null, feedTimestamp: null, trips: [] });
+    let trips = doc.trips ?? [];
+    if (line) {
+      const code = line.toUpperCase();
+      trips = trips.filter(t => t.lineCode === code);
+    }
+    res.json({ snapshotAt: doc.snapshotAt, feedTimestamp: doc.feedTimestamp, trips });
+  } catch (err) {
+    console.error('[trains/trip-updates]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Enriched located trains (human-readable location + destination)
 router.get('/located', async (req, res) => {
@@ -28,11 +52,17 @@ router.get('/located', async (req, res) => {
 router.get('/live', async (req, res) => {
   try {
     const { data } = await wmataClient.get('/TrainPositions/TrainPositions?contentType=json');
-    const trains = await enrichTrainsWithOccupancy(
+    let trains = await enrichTrainsWithOccupancy(
       data.TrainPositions ?? [],
       'TrainId',
       GTFS_ENABLED,
       () => RailOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
+    );
+    trains = await enrichWithTripUpdates(
+      trains,
+      'TrainId',
+      GTFS_TRIP_UPDATES_ENABLED,
+      () => TripUpdate.findOne().sort({ snapshotAt: -1 }).lean(),
     );
     res.json({ ...data, TrainPositions: trains });
   } catch (err) {
