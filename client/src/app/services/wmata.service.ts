@@ -83,4 +83,10 @@ export class WmataService {
     if (routeId) params = params.set('routeId', routeId);
     return this.http.get(`${this.base}/bus/incidents/history`, { params });
   }
+
+  getTripUpdates(line?: string): Observable<any> {
+    let params = new HttpParams();
+    if (line) params = params.set('line', line);
+    return this.http.get(`${this.base}/trains/trip-updates`, { params });
+  }
 }

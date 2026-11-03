@@ -2,10 +2,13 @@
 
 const AdherenceSnapshot = require('../../models/AdherenceSnapshot');
 const RailOccupancy = require('../../models/RailOccupancy');
+const TripUpdate = require('../../models/TripUpdate');
 const railGeometry = require('../../lib/railGeometry');
 const { enrichTrainsWithOccupancy } = require('../../lib/occupancyEnricher');
+const { enrichWithTripUpdates } = require('../../lib/tripUpdateEnricher');
 
 const GTFS_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
+const GTFS_TRIP_UPDATES_ENABLED = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
 
 async function getTrainPositions({ line } = {}) {
   const snapshot = await AdherenceSnapshot.findOne().sort({ snapshotAt: -1 }).lean();
@@ -41,6 +44,12 @@ async function getTrainPositions({ line } = {}) {
     'trainId',
     GTFS_ENABLED,
     () => RailOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
+  );
+  enrichedTrains = await enrichWithTripUpdates(
+    enrichedTrains,
+    'trainId',
+    GTFS_TRIP_UPDATES_ENABLED,
+    () => TripUpdate.findOne().sort({ snapshotAt: -1 }).lean(),
   );
 
   return { snapshotAt, summary, lineSummaries, trains: enrichedTrains };

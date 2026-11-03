@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
+import * as L from 'leaflet';
 import { MapPanelComponent } from './map-panel.component';
 import { WmataService } from '../../services/wmata.service';
 import { MapCommandService } from '../../services/map-command.service';
@@ -89,5 +90,41 @@ describe('MapPanelComponent', () => {
     mapCommandService.dispatch({ action: 'focus_station', target: 'A01' });
 
     expect(panToStationSpy).toHaveBeenCalledWith('A01');
+  });
+
+  it('rebuildScheduleDelay calls circleMarker for trains with scheduleDelay', () => {
+    const circleMarkerSpy = vi.spyOn(L, 'circleMarker');
+
+    (component as any).cachedData = {
+      trains: [
+        { LineCode: 'RD', lat: 38.9, lon: -77.0, scheduleDelay: { seconds: 200, label: 'Slight Delay' } },
+        { LineCode: 'BL', lat: 38.8, lon: -77.1, scheduleDelay: null },
+      ],
+      stations: [],
+      incidents: [],
+      routes: {},
+    };
+    component.selectedLine = 'ALL';
+    (component as any).rebuildScheduleDelay();
+
+    // Only the train with non-null scheduleDelay should produce a ring
+    expect(circleMarkerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rebuildScheduleDelay skips trains without matching selectedLine', () => {
+    const circleMarkerSpy = vi.spyOn(L, 'circleMarker');
+
+    (component as any).cachedData = {
+      trains: [
+        { LineCode: 'RD', lat: 38.9, lon: -77.0, scheduleDelay: { seconds: 700, label: 'Significant Delay' } },
+      ],
+      stations: [],
+      incidents: [],
+      routes: {},
+    };
+    component.selectedLine = 'BL'; // different line
+    (component as any).rebuildScheduleDelay();
+
+    expect(circleMarkerSpy).not.toHaveBeenCalled();
   });
 });

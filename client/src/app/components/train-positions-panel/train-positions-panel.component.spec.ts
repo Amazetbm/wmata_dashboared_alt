@@ -119,4 +119,34 @@ describe('TrainPositionsPanelComponent', () => {
     const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
     expect(ths.find(th => th.textContent?.includes('Crowding'))).toBeTruthy();
   });
+
+  it('hasScheduleDelay is false when all scheduleDelay null', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/trains/located');
+    req.flush({ trains: [makeTrain({ scheduleDelay: null }), makeTrain({ trainId: 'T002', scheduleDelay: null })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.includes('Delay'))).toBeFalsy();
+  });
+
+  it('hasScheduleDelay is true when at least one non-null scheduleDelay', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/trains/located');
+    req.flush({ trains: [makeTrain({ scheduleDelay: { seconds: 200, label: 'Slight Delay' } })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ths = Array.from(fixture.nativeElement.querySelectorAll('th')) as HTMLElement[];
+    expect(ths.find(th => th.textContent?.includes('Delay'))).toBeTruthy();
+  });
+
+  it('renders delay label in cell when scheduleDelay is non-null', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne('/api/trains/located');
+    req.flush({ trains: [makeTrain({ scheduleDelay: { seconds: 700, label: 'Significant Delay' } })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const cell = fixture.nativeElement.querySelector('.delay-chip');
+    expect(cell?.textContent?.trim()).toBe('Significant Delay');
+  });
 });

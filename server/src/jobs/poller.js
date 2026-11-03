@@ -8,11 +8,14 @@ const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
 const RailOccupancy = require('../models/RailOccupancy');
 const BusOccupancy = require('../models/BusOccupancy');
+const TripUpdate = require('../models/TripUpdate');
 const railGeometry = require('../lib/railGeometry');
 const { decodeVehiclePositions } = require('../lib/gtfsRt');
+const { decodeTripUpdates } = require('../lib/gtfsRt/tripUpdateDecoder');
 
 const GTFS_RAIL_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
 const GTFS_BUS_ENABLED  = process.env.GTFS_BUS_OCCUPANCY  === 'true';
+const GTFS_TRIP_UPDATES_ENABLED = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
 // Keep old name for any internal references below
 const GTFS_ENABLED = GTFS_RAIL_ENABLED;
 
@@ -105,12 +108,14 @@ async function fetchAndStore() {
     ];
     if (GTFS_RAIL_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-vehiclepositions.pb', { responseType: 'arraybuffer' }));
     if (GTFS_BUS_ENABLED)  feeds.push(wmataClient.get('/gtfs/bus-gtfsrt-vehiclepositions.pb',  { responseType: 'arraybuffer' }));
+    if (GTFS_TRIP_UPDATES_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-tripupdates.pb', { responseType: 'arraybuffer' }));
 
     const results = await Promise.allSettled(feeds);
     const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes] = results;
     let idx = 5;
-    const gtfsRailRes = GTFS_RAIL_ENABLED ? results[idx++] : undefined;
-    const gtfsBusRes  = GTFS_BUS_ENABLED  ? results[idx++] : undefined;
+    const gtfsRailRes       = GTFS_RAIL_ENABLED         ? results[idx++] : undefined;
+    const gtfsBusRes        = GTFS_BUS_ENABLED          ? results[idx++] : undefined;
+    const gtfsTripUpdatesRes = GTFS_TRIP_UPDATES_ENABLED ? results[idx++] : undefined;
     // Legacy alias for the rail block below
     const gtfsRes = gtfsRailRes;
 
@@ -200,6 +205,17 @@ async function fetchAndStore() {
       }
     } else if (GTFS_BUS_ENABLED && gtfsBusRes) {
       console.error('GTFS-RT bus fetch error:', gtfsBusRes.reason?.message);
+    }
+
+    if (GTFS_TRIP_UPDATES_ENABLED && gtfsTripUpdatesRes?.status === 'fulfilled') {
+      try {
+        const { feedTimestamp, trips } = decodeTripUpdates(gtfsTripUpdatesRes.value.data);
+        if (trips.length) await TripUpdate.create({ snapshotAt, feedTimestamp, trips });
+      } catch (err) {
+        console.error('GTFS-RT trip updates decode/save error:', err.message);
+      }
+    } else if (GTFS_TRIP_UPDATES_ENABLED && gtfsTripUpdatesRes) {
+      console.error('GTFS-RT trip updates fetch error:', gtfsTripUpdatesRes.reason?.message);
     }
 
     // Compute and persist adherence if we have train positions
