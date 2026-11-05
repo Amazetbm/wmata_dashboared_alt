@@ -15,6 +15,7 @@ const mapRoutes       = require('./routes/map');
 const busRoutes       = require('./routes/bus');
 const assistantRoutes = require('./routes/assistant');
 const scheduleRoutes  = require('./routes/schedule');
+const statusRoutes    = require('./routes/status');
 const scheduleLoader  = require('./jobs/scheduleLoader');
 
 const app = express();
@@ -35,6 +36,7 @@ app.use('/api/map',     mapRoutes);
 app.use('/api/bus',       busRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/schedule', scheduleRoutes);
+app.use('/api/status',  statusRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {

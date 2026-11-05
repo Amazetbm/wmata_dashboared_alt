@@ -1,15 +1,13 @@
 const router = require('express').Router();
-const { wmataClient } = require('../middleware/wmata');
+const snapshotCache = require('../lib/snapshotCache');
 const ElevatorOutage = require('../models/ElevatorOutage');
 
 // Live
-router.get('/live', async (req, res) => {
-  try {
-    const { data } = await wmataClient.get('/Incidents.svc/json/ElevatorIncidents');
-    res.json(data);
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
+router.get('/live', (req, res) => {
+  const { data } = snapshotCache.get('elevators');
+  const response = { ElevatorIncidents: data ?? [] };
+  if (snapshotCache.isStale('elevators')) response.stale = true;
+  res.json(response);
 });
 
 // Historical

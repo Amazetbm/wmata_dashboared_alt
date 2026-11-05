@@ -1,49 +1,29 @@
 'use strict';
 
-const { wmataClient } = require('../middleware/wmata');
+const staticCache = require('./staticCache');
 
-// ── StandardRoutes cache (10-minute TTL) ─────────────────────────────────────
-let cachedRoutes   = null;
-let routesCachedAt = 0;
-const ROUTES_TTL_MS = 10 * 60 * 1000;
+// ── StandardRoutes — delegated to staticCache (15-minute TTL) ────────────────
 
 async function getStandardRoutes(force = false) {
-  if (!force && cachedRoutes && (Date.now() - routesCachedAt) < ROUTES_TTL_MS) {
-    return cachedRoutes;
-  }
-  const { data } = await wmataClient.get('/TrainPositions/StandardRoutes?contentType=json');
-  cachedRoutes   = data.StandardRoutes ?? [];
-  routesCachedAt = Date.now();
-  console.log(`[railGeometry] StandardRoutes (re)cached — ${cachedRoutes.length} routes`);
-  return cachedRoutes;
+  return staticCache.getStandardRoutes(force);
 }
 
 function getCachedRoutes() {
-  return cachedRoutes ?? [];
+  return staticCache.getCachedRoutes();
 }
 
-// ── Stations cache (60-minute TTL) ───────────────────────────────────────────
-let cachedStations   = null;
-let stationsCachedAt = 0;
-const STATIONS_TTL_MS = 60 * 60 * 1000;
-
+// ── Stations — delegated to staticCache (6-hour TTL) ─────────────────────────
 /**
  * Returns a Map<stationCode, {Name, Lat, Lon}>.
  * jStations uses the field name "Code" as the key.
  */
 async function getStations() {
-  if (cachedStations && (Date.now() - stationsCachedAt) < STATIONS_TTL_MS) {
-    return cachedStations;
-  }
-  const { data } = await wmataClient.get('/Rail.svc/json/jStations');
-  const stations = data.Stations ?? [];
-  cachedStations = new Map(
+  const stations = await staticCache.getStations();
+  return new Map(
     stations
       .filter(s => s.Code)
       .map(s => [s.Code, { Name: s.Name, Lat: s.Lat, Lon: s.Lon }])
   );
-  stationsCachedAt = Date.now();
-  return cachedStations;
 }
 
 // ── buildRouteMaps ────────────────────────────────────────────────────────────

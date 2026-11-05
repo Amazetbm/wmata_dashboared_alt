@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { wmataClient } = require('../middleware/wmata');
+const snapshotCache = require('../lib/snapshotCache');
 const TrainPosition = require('../models/TrainPosition');
 const RailOccupancy = require('../models/RailOccupancy');
 const TripUpdate = require('../models/TripUpdate');
@@ -51,9 +51,10 @@ router.get('/located', async (req, res) => {
 // Live
 router.get('/live', async (req, res) => {
   try {
-    const { data } = await wmataClient.get('/TrainPositions/TrainPositions?contentType=json');
+    const { data: rawPositions, snapshotAt } = snapshotCache.get('trainPositions');
+    const isStale = snapshotCache.isStale('trainPositions');
     let trains = await enrichTrainsWithOccupancy(
-      data.TrainPositions ?? [],
+      rawPositions ?? [],
       'TrainId',
       GTFS_ENABLED,
       () => RailOccupancy.findOne().sort({ snapshotAt: -1 }).lean(),
@@ -64,7 +65,9 @@ router.get('/live', async (req, res) => {
       GTFS_TRIP_UPDATES_ENABLED,
       () => TripUpdate.findOne().sort({ snapshotAt: -1 }).lean(),
     );
-    res.json({ ...data, TrainPositions: trains });
+    const response = { TrainPositions: trains, snapshotAt };
+    if (isStale) response.stale = true;
+    res.json(response);
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

@@ -1,5 +1,7 @@
 const cron = require('node-cron');
 const { wmataClient } = require('../middleware/wmata');
+const snapshotCache = require('../lib/snapshotCache');
+const wmataUsage    = require('../lib/wmataUsage');
 const Incident = require('../models/Incident');
 const TrainPosition = require('../models/TrainPosition');
 const ElevatorOutage = require('../models/ElevatorOutage');
@@ -228,7 +230,9 @@ async function fetchAndStore() {
     const gtfsRes = gtfsRailRes;
 
     if (incRes.status === 'fulfilled') {
-      const incidents = (incRes.value.data.Incidents || []).map(i => ({ ...i, snapshotAt }));
+      const rawIncidents = incRes.value.data.Incidents || [];
+      snapshotCache.set('incidents', rawIncidents);
+      const incidents = rawIncidents.map(i => ({ ...i, snapshotAt }));
       if (incidents.length) await Incident.insertMany(incidents);
     } else {
       console.error('Incidents fetch error:', incRes.reason?.message);
@@ -237,6 +241,7 @@ async function fetchAndStore() {
     let trainPositions = [];
     if (trainRes.status === 'fulfilled') {
       trainPositions = trainRes.value.data.TrainPositions || [];
+      snapshotCache.set('trainPositions', trainPositions);
       const trains = trainPositions.map(t => ({ ...t, snapshotAt }));
       if (trains.length) await TrainPosition.insertMany(trains);
     } else {
@@ -244,21 +249,27 @@ async function fetchAndStore() {
     }
 
     if (elevRes.status === 'fulfilled') {
-      const outages = (elevRes.value.data.ElevatorIncidents || []).map(e => ({ ...e, snapshotAt }));
+      const rawOutages = elevRes.value.data.ElevatorIncidents || [];
+      snapshotCache.set('elevators', rawOutages);
+      const outages = rawOutages.map(e => ({ ...e, snapshotAt }));
       if (outages.length) await ElevatorOutage.insertMany(outages);
     } else {
       console.error('Elevator outages fetch error:', elevRes.reason?.message);
     }
 
     if (busPositionsRes.status === 'fulfilled') {
-      const busPositions = (busPositionsRes.value.data.BusPositions || []).map(p => ({ ...p, snapshotAt }));
+      const rawBusPositions = busPositionsRes.value.data.BusPositions || [];
+      snapshotCache.set('busPositions', rawBusPositions);
+      const busPositions = rawBusPositions.map(p => ({ ...p, snapshotAt }));
       if (busPositions.length) await BusPosition.insertMany(busPositions);
     } else {
       console.error('Bus positions fetch error:', busPositionsRes.reason?.message);
     }
 
     if (busIncidentsRes.status === 'fulfilled') {
-      const busIncidents = (busIncidentsRes.value.data.BusIncidents || []).map(i => ({ ...i, snapshotAt }));
+      const rawBusIncidents = busIncidentsRes.value.data.BusIncidents || [];
+      snapshotCache.set('busIncidents', rawBusIncidents);
+      const busIncidents = rawBusIncidents.map(i => ({ ...i, snapshotAt }));
       if (busIncidents.length) await BusIncident.insertMany(busIncidents);
       console.log(`[poller] Bus incidents from WMATA: ${busIncidents.length}`);
     } else {
@@ -426,6 +437,8 @@ async function fetchAndStore() {
 function startPolling() {
   fetchAndStore();
   cron.schedule('*/30 * * * * *', fetchAndStore);
+  wmataUsage.scheduleDailyReset();
+  wmataUsage.scheduleHourlyLog();
 }
 
 module.exports = { startPolling, fetchAndStore, computeScheduleAdherence };
