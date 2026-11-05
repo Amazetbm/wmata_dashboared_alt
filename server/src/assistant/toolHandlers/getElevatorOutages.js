@@ -1,12 +1,12 @@
 'use strict';
 
-const { wmataClient } = require('../../middleware/wmata');
+const snapshotCache = require('../../lib/snapshotCache');
 const ElevatorOutage = require('../../models/ElevatorOutage');
 
 async function getElevatorOutages({ mode = 'live', from, to, station_code } = {}) {
   if (mode === 'live') {
-    const { data } = await wmataClient.get('/Incidents.svc/json/ElevatorIncidents');
-    let outages = (data.ElevatorIncidents || []).map(o => ({
+    const rawOutages = snapshotCache.get('elevators').data || [];
+    let outages = rawOutages.map(o => ({
       unitName:   o.UnitName,
       unitType:   o.UnitType,
       stationCode: o.StationCode,

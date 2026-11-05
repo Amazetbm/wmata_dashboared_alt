@@ -1,15 +1,13 @@
 const router = require('express').Router();
-const { wmataClient } = require('../middleware/wmata');
+const snapshotCache = require('../lib/snapshotCache');
 const Incident = require('../models/Incident');
 
 // Live
-router.get('/live', async (req, res) => {
-  try {
-    const { data } = await wmataClient.get('/Incidents.svc/json/Incidents');
-    res.json(data);
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
+router.get('/live', (req, res) => {
+  const { data } = snapshotCache.get('incidents');
+  const response = { Incidents: data ?? [] };
+  if (snapshotCache.isStale('incidents')) response.stale = true;
+  res.json(response);
 });
 
 // Historical with time-range filtering

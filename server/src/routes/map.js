@@ -1,6 +1,7 @@
 const router = require('express').Router();
-const { wmataClient } = require('../middleware/wmata');
-const railGeometry = require('../lib/railGeometry');
+const snapshotCache = require('../lib/snapshotCache');
+const staticCache   = require('../lib/staticCache');
+const railGeometry  = require('../lib/railGeometry');
 const RailOccupancy = require('../models/RailOccupancy');
 const TripUpdate = require('../models/TripUpdate');
 const { enrichTrainsWithOccupancy } = require('../lib/occupancyEnricher');
@@ -13,28 +14,12 @@ router.get('/', async (req, res) => {
   console.log('[/api/map] --- fetch cycle start ---');
 
   try {
-    const [trainsRes, stationsRes, incidentsRes] = await Promise.allSettled([
-      wmataClient.get('/TrainPositions/TrainPositions?contentType=json'),
-      wmataClient.get('/Rail.svc/json/jStations'),
-      wmataClient.get('/Incidents.svc/json/Incidents'),
-    ]);
+    const rawTrains   = snapshotCache.get('trainPositions').data ?? [];
+    const rawStations = await staticCache.getStations();
+    const incidents   = snapshotCache.get('incidents').data ?? [];
+    const isStale     = snapshotCache.isStale('trainPositions');
 
-    // ── Log individual live API call outcomes ─────────────────────────────
-    for (const [name, result] of [
-      ['TrainPositions', trainsRes],
-      ['jStations', stationsRes],
-      ['Incidents', incidentsRes],
-    ]) {
-      if (result.status === 'rejected') {
-        console.error(`[/api/map] ${name} FAILED: ${result.reason?.message ?? result.reason}`);
-      } else {
-        console.log(`[/api/map] ${name} OK (${result.status})`);
-      }
-    }
-
-    const rawTrains   = trainsRes.status    === 'fulfilled' ? (trainsRes.value.data.TrainPositions ?? []) : [];
-    const rawStations = stationsRes.status  === 'fulfilled' ? (stationsRes.value.data.Stations     ?? []) : [];
-    const incidents   = incidentsRes.status === 'fulfilled' ? (incidentsRes.value.data.Incidents   ?? []) : [];
+    console.log(`[/api/map] snapshot: ${rawTrains.length} trains, ${rawStations.length} stations, ${incidents.length} incidents${isStale ? ' [STALE]' : ''}`);
 
     // StandardRoutes from shared 10-minute cache; falls back to stale value on fetch error
     let standardRoutes;
@@ -190,7 +175,9 @@ router.get('/', async (req, res) => {
     console.log(`[/api/map] Response: ${trains.length} trains, ${stations.length} stations, ${incidents.length} incidents, ${Object.keys(linePolylines).length} polylines`);
     console.log('[/api/map] --- fetch cycle end ---');
 
-    res.json({ trains, stations, incidents, routes: linePolylines });
+    const response = { trains, stations, incidents, routes: linePolylines };
+    if (isStale) response.stale = true;
+    res.json(response);
   } catch (err) {
     console.error('[/api/map] Unexpected error:', err.message);
     console.error(err.stack);

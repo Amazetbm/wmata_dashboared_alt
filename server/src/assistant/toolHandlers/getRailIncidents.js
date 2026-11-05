@@ -1,12 +1,11 @@
 'use strict';
 
-const { wmataClient } = require('../../middleware/wmata');
+const snapshotCache = require('../../lib/snapshotCache');
 const Incident = require('../../models/Incident');
 
 async function getRailIncidents({ mode = 'live', from, to, line } = {}) {
   if (mode === 'live') {
-    const { data } = await wmataClient.get('/Incidents.svc/json/Incidents');
-    let incidents = data.Incidents || [];
+    let incidents = snapshotCache.get('incidents').data || [];
     if (line) {
       const code = line.toUpperCase();
       incidents = incidents.filter(i => (i.LinesAffected || '').includes(code));

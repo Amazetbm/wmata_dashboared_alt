@@ -1,5 +1,7 @@
 const router = require('express').Router();
 const { wmataClient } = require('../middleware/wmata');
+const snapshotCache = require('../lib/snapshotCache');
+const staticCache   = require('../lib/staticCache');
 const BusPosition = require('../models/BusPosition');
 const BusIncident = require('../models/BusIncident');
 const BusOccupancy = require('../models/BusOccupancy');
@@ -37,19 +39,11 @@ async function fetchRouteDetail(routeId) {
 // Returns live positions, route list, stops, incidents, and shapes for active routes.
 router.get('/map', async (req, res) => {
   try {
-    const [posRes, routesRes, stopsRes, incRes] = await Promise.allSettled([
-      wmataClient.get('/Bus.svc/json/jBusPositions'),
-      wmataClient.get('/Bus.svc/json/jRoutes'),
-      wmataClient.get('/Bus.svc/json/jStops'),
-      wmataClient.get('/Incidents.svc/json/BusIncidents'),
-    ]);
+    const positions = snapshotCache.get('busPositions').data ?? [];
+    let incidents   = snapshotCache.get('busIncidents').data ?? [];
+    const [routes, stops] = await Promise.all([staticCache.getRoutes(), staticCache.getStops()]);
 
-    const positions = posRes.status === 'fulfilled' ? (posRes.value.data.BusPositions || []) : [];
-    const routes    = routesRes.status === 'fulfilled' ? (routesRes.value.data.Routes || []) : [];
-    const stops     = stopsRes.status === 'fulfilled' ? (stopsRes.value.data.Stops || []) : [];
-
-    let incidentsSource = 'live';
-    let incidents = incRes.status === 'fulfilled' ? (incRes.value.data.BusIncidents || []) : [];
+    let incidentsSource = snapshotCache.isStale('busIncidents') ? 'cached' : 'snapshot';
 
     if (incidents.length === 0) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000);
