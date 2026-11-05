@@ -42,6 +42,7 @@ services:
       SCHEDULE_EARLY_SEC: ${SCHEDULE_EARLY_SEC:-}
       SCHEDULE_ONTIME_SEC: ${SCHEDULE_ONTIME_SEC:-}
       SCHEDULE_MINOR_SEC: ${SCHEDULE_MINOR_SEC:-}
+      POLLER_ENABLED: ${POLLER_ENABLED:-true}
     depends_on:
       mongo:
         condition: service_healthy

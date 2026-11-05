@@ -2,10 +2,10 @@
 
 const cron = require('node-cron');
 const GtfsVersion = require('../models/GtfsVersion');
-const { loadGtfsStatic, computeAndStoreMeta } = require('../lib/gtfsStatic/loader');
+const { loadGtfsStatic, computeAndStoreMeta, cleanupPreviousVersions } = require('../lib/gtfsStatic/loader');
 
-const ENABLED = process.env.GTFS_RAIL_SCHEDULE === 'true';
-const STALE_HOURS = 36; // reload if active version is older than this
+const ENABLED         = process.env.GTFS_RAIL_SCHEDULE === 'true';
+const POLLER_ENABLED  = process.env.POLLER_ENABLED !== 'false';
 
 /**
  * Initialise the GTFS static schedule loader.
@@ -13,11 +13,16 @@ const STALE_HOURS = 36; // reload if active version is older than this
  */
 async function init() {
   if (!ENABLED) return;
+  if (!POLLER_ENABLED) {
+    console.log('[scheduleLoader] POLLER_ENABLED=false — schedule loader disabled');
+    return;
+  }
 
-  // Check if we need an immediate load
   const active = await GtfsVersion.findOne({ status: 'active' }).sort({ loadedAt: -1 });
-  const staleMs = STALE_HOURS * 60 * 60 * 1000;
-  const needsLoad = !active || (Date.now() - active.loadedAt.getTime() > staleMs);
+
+  // Prune expired previous versions
+  await cleanupPreviousVersions().catch(err =>
+    console.error('[scheduleLoader] cleanupPreviousVersions failed:', err.message));
 
   // Backfill meta if the active version was loaded before computeAndStoreMeta was added
   if (active && !active.meta?.computedAt) {
@@ -26,14 +31,22 @@ async function init() {
       .catch(err => console.error('[scheduleLoader] Meta backfill failed:', err.message));
   }
 
+  // Check for deprecated env var
   if (process.env.GTFS_FORCE_RELOAD === 'true') {
-    console.log('[scheduleLoader] GTFS_FORCE_RELOAD=true — triggering forced reload');
+    console.warn('[scheduleLoader] GTFS_FORCE_RELOAD is deprecated — use GTFS_RAIL_SCHEDULE_FORCE_RELOAD');
+  }
+  const forceReload = process.env.GTFS_RAIL_SCHEDULE_FORCE_RELOAD === 'true'
+    || process.env.GTFS_FORCE_RELOAD === 'true';
+
+  if (forceReload) {
+    console.log('[scheduleLoader] Force reload requested — triggering reload');
     runLoad({ force: true }).catch(err => console.error('[scheduleLoader] Force reload failed:', err.message));
-  } else if (needsLoad) {
-    console.log('[scheduleLoader] Triggering immediate GTFS static load');
+  } else if (!active) {
+    console.log('[scheduleLoader] No active GTFS version — triggering immediate load');
     runLoad().catch(err => console.error('[scheduleLoader] Initial load failed:', err.message));
   } else {
-    console.log(`[scheduleLoader] Active GTFS version found (feedDate=${active.feedDate}), skipping immediate load`);
+    const ageHours = Math.round((Date.now() - active.loadedAt.getTime()) / 3600000);
+    console.log(`[scheduleLoader] Active version present (feedDate=${active.feedDate}, age=${ageHours}h) — deferring to 3 AM cron`);
   }
 
   // Daily reload at 3 AM Eastern

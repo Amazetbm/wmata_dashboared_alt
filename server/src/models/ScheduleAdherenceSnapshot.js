@@ -30,8 +30,10 @@ const lineSummarySchema = new mongoose.Schema({
 const scheduleAdherenceSnapshotSchema = new mongoose.Schema({
   snapshotAt:    { type: Date, required: true },
   feedTimestamp: { type: Date, required: true },
-  coverageRate:  { type: Number, default: null },
-  degraded:      { type: Boolean, default: false },
+  coverageRate:    { type: Number, default: null },
+  degraded:        { type: Boolean, default: false },
+  matchedActive:   { type: Number, default: 0 },
+  matchedPrevious: { type: Number, default: 0 },
   summary: {
     total:        { type: Number, default: 0 },
     early:        { type: Number, default: 0 },

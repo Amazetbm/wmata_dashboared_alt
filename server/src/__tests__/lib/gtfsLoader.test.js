@@ -12,7 +12,7 @@ const GtfsCalendarDate = require('../../models/GtfsCalendarDate');
 const GtfsTrip = require('../../models/GtfsTrip');
 const GtfsStopTime = require('../../models/GtfsStopTime');
 
-const { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE } = require('../../lib/gtfsStatic/loader');
+const { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE, cleanupPreviousVersions } = require('../../lib/gtfsStatic/loader');
 
 // Test fixtures only have 2 stations; pass minStations:1 to bypass the 95-station gate
 const load = (opts = {}) => loadGtfsStatic({ minStations: 1, ...opts });
@@ -157,7 +157,7 @@ describe('loadGtfsStatic', () => {
     expect(await GtfsVersion.countDocuments()).toBe(versionsBefore);
   });
 
-  it('replaces old active version when feed hash changes', async () => {
+  it('demotes old active to previous (not deleted) when feed hash changes', async () => {
     await load({ zipBuffer: buildZip('v1') });
     const v1 = await GtfsVersion.findOne({ status: 'active' });
     const v1Id = v1._id;
@@ -167,13 +167,15 @@ describe('loadGtfsStatic', () => {
     const v2 = await GtfsVersion.findOne({ status: 'active' });
     expect(v2._id.toString()).not.toBe(v1Id.toString());
 
-    // Old version deleted from GtfsVersion
+    // Old version demoted to 'previous', not deleted
     const old = await GtfsVersion.findById(v1Id);
-    expect(old).toBeNull();
+    expect(old).not.toBeNull();
+    expect(old.status).toBe('previous');
+    expect(old.previousSince).not.toBeNull();
 
-    // Old version's data deleted
-    expect(await GtfsRoute.countDocuments({ version: v1Id })).toBe(0);
-    expect(await GtfsStopTime.countDocuments({ version: v1Id })).toBe(0);
+    // Old version's data still exists
+    expect(await GtfsRoute.countDocuments({ version: v1Id })).toBeGreaterThan(0);
+    expect(await GtfsStopTime.countDocuments({ version: v1Id })).toBeGreaterThan(0);
   });
 
   it('cleans up orphaned loading version on next load', async () => {
@@ -192,6 +194,78 @@ describe('loadGtfsStatic', () => {
 
     // New version is active
     expect(await GtfsVersion.findOne({ status: 'active' })).not.toBeNull();
+  });
+});
+
+describe('cleanupPreviousVersions', () => {
+  it('deletes a previous version older than 36 hours', async () => {
+    // Create a previous version with previousSince > 36h ago
+    const old = await GtfsVersion.create({
+      feedHash: 'old-hash',
+      feedDate: '20260101',
+      status: 'previous',
+      loadedAt: new Date(Date.now() - 37 * 3600 * 1000),
+      previousSince: new Date(Date.now() - 37 * 3600 * 1000),
+      lastMatchAt: null,
+    });
+    await GtfsRoute.create({ version: old._id, routeId: 'RED', lineCode: 'RD', longName: 'Red' });
+
+    await cleanupPreviousVersions();
+
+    expect(await GtfsVersion.findById(old._id)).toBeNull();
+    expect(await GtfsRoute.countDocuments({ version: old._id })).toBe(0);
+  });
+
+  it('deletes a version that has never matched trips and is older than 1 hour', async () => {
+    const old = await GtfsVersion.create({
+      feedHash: 'never-matched-hash',
+      feedDate: '20260102',
+      status: 'previous',
+      loadedAt: new Date(Date.now() - 61 * 60 * 1000),
+      previousSince: new Date(Date.now() - 61 * 60 * 1000),
+      lastMatchAt: null,
+    });
+
+    await cleanupPreviousVersions();
+
+    expect(await GtfsVersion.findById(old._id)).toBeNull();
+  });
+
+  it('keeps a previous version that matched trips recently', async () => {
+    const v = await GtfsVersion.create({
+      feedHash: 'recent-match-hash',
+      feedDate: '20260103',
+      status: 'previous',
+      loadedAt: new Date(Date.now() - 61 * 60 * 1000),
+      previousSince: new Date(Date.now() - 61 * 60 * 1000),
+      lastMatchAt: new Date(Date.now() - 30 * 60 * 1000), // matched 30 min ago
+    });
+
+    await cleanupPreviousVersions();
+
+    const still = await GtfsVersion.findById(v._id);
+    expect(still).not.toBeNull();
+    expect(still.status).toBe('previous');
+  });
+
+  it('mid-service swap: demotes old active to previous, does not delete data', async () => {
+    // Load v1
+    await load({ zipBuffer: buildZip('v1') });
+    const v1 = await GtfsVersion.findOne({ status: 'active' });
+    const v1Id = v1._id;
+    const v1StopTimeCount = await GtfsStopTime.countDocuments({ version: v1Id });
+    expect(v1StopTimeCount).toBeGreaterThan(0);
+
+    // Load v2 (different hash)
+    await load({ zipBuffer: buildZip('v2') });
+
+    // v1 should be 'previous', not deleted
+    const v1After = await GtfsVersion.findById(v1Id);
+    expect(v1After).not.toBeNull();
+    expect(v1After.status).toBe('previous');
+
+    // v1's stop_times must still exist for in-flight RT trip lookups
+    expect(await GtfsStopTime.countDocuments({ version: v1Id })).toBe(v1StopTimeCount);
   });
 });
 
