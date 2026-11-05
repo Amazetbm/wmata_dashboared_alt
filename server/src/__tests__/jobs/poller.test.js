@@ -1,6 +1,30 @@
 'use strict';
 
-const { computeScheduleAdherence } = require('../../jobs/poller');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const mongoose = require('mongoose');
+
+const GtfsStopTime = require('../../models/GtfsStopTime');
+const { computeScheduleAdherence, lookupScheduledTimes } = require('../../jobs/poller');
+
+// ── MongoDB setup (used by lookupScheduledTimes tests) ───────────────────────
+
+let mongod;
+
+beforeAll(async () => {
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongod.stop();
+});
+
+afterEach(async () => {
+  const db = mongoose.connection.db;
+  const cols = await db.listCollections().toArray();
+  for (const c of cols) await db.dropCollection(c.name).catch(() => {});
+});
 
 // ── computeScheduleAdherence ──────────────────────────────────────────────────
 
@@ -130,4 +154,60 @@ test('error inside computeScheduleAdherence is catchable independently', () => {
   const { computeScheduleAdherence: sameFunc } = require('../../jobs/poller');
   const ok = sameFunc([makeTrip({ delaySeconds: 30 })], false, 1);
   expect(ok.summary.onTime).toBe(1);
+});
+
+// ── lookupScheduledTimes ──────────────────────────────────────────────────────
+
+test('lookupScheduledTimes: matches trips across active and previous versions', async () => {
+  const activeVerId   = new mongoose.Types.ObjectId();
+  const previousVerId = new mongoose.Types.ObjectId();
+
+  // Insert two rows with the same tripId:stopSequence but different versions
+  await GtfsStopTime.insertMany([
+    { version: activeVerId,   tripId: 'trip_A', stopId: 'PF_A01_C', stopSequence: 1, arrivalSec: 3600, departureSec: 3600 },
+    { version: previousVerId, tripId: 'trip_P', stopId: 'PF_A01_C', stopSequence: 2, arrivalSec: 7200, departureSec: 7200 },
+  ]);
+
+  const versions = [
+    { _id: activeVerId,   status: 'active',   feedDate: '20261027' },
+    { _id: previousVerId, status: 'previous',  feedDate: '20261020' },
+  ];
+
+  const matchableTrips = [
+    { tripId: 'trip_A', refStopSequence: 1 },
+    { tripId: 'trip_P', refStopSequence: 2 },
+  ];
+
+  const { schedMap, matchedActive, matchedPrevious } =
+    await lookupScheduledTimes(matchableTrips, versions);
+
+  expect(schedMap.size).toBe(2);
+  expect(matchedActive).toBe(1);
+  expect(matchedPrevious).toBe(1);
+
+  expect(schedMap.get('trip_A:1').source).toBe('active');
+  expect(schedMap.get('trip_P:2').source).toBe('previous');
+});
+
+test('lookupScheduledTimes: active row wins over previous for the same key', async () => {
+  const activeVerId   = new mongoose.Types.ObjectId();
+  const previousVerId = new mongoose.Types.ObjectId();
+
+  await GtfsStopTime.insertMany([
+    { version: previousVerId, tripId: 'trip_X', stopId: 'PF_A01_C', stopSequence: 1, arrivalSec: 1000, departureSec: 1000 },
+    { version: activeVerId,   tripId: 'trip_X', stopId: 'PF_A01_C', stopSequence: 1, arrivalSec: 2000, departureSec: 2000 },
+  ]);
+
+  const versions = [
+    { _id: activeVerId,   status: 'active',   feedDate: '20261027' },
+    { _id: previousVerId, status: 'previous',  feedDate: '20261020' },
+  ];
+
+  const { schedMap, matchedActive, matchedPrevious } =
+    await lookupScheduledTimes([{ tripId: 'trip_X', refStopSequence: 1 }], versions);
+
+  expect(schedMap.get('trip_X:1').source).toBe('active');
+  expect(schedMap.get('trip_X:1').row.arrivalSec).toBe(2000);
+  expect(matchedActive).toBe(1);
+  expect(matchedPrevious).toBe(0);
 });

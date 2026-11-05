@@ -30,7 +30,10 @@ router.get('/status', async (req, res) => {
   if (!isEnabled()) return res.status(503).json(DISABLED_RESP);
 
   try {
-    const version = await GtfsVersion.findOne({ status: 'active' }).sort({ loadedAt: -1 }).lean();
+    const [version, prevVersion] = await Promise.all([
+      GtfsVersion.findOne({ status: 'active' }).sort({ loadedAt: -1 }).lean(),
+      GtfsVersion.findOne({ status: 'previous' }, { feedDate: 1, loadedAt: 1, previousSince: 1 }).lean(),
+    ]);
     if (!version) {
       return res.json({ enabled: true, loaded: false });
     }
@@ -69,6 +72,9 @@ router.get('/status', async (req, res) => {
       } : null,
       coversToday,
       stationsMapped: metaReady ? stationsMapped : null,
+      previousVersion: prevVersion
+        ? { feedDate: prevVersion.feedDate, loadedAt: prevVersion.loadedAt, previousSince: prevVersion.previousSince }
+        : null,
     });
   } catch (err) {
     console.error('[schedule/status]', err.message);

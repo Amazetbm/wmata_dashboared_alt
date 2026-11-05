@@ -25,12 +25,14 @@ const GTFS_BUS_ENABLED  = process.env.GTFS_BUS_OCCUPANCY  === 'true';
 const GTFS_TRIP_UPDATES_ENABLED = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
 // Keep old name for any internal references below
 const GTFS_ENABLED = GTFS_RAIL_ENABLED;
+const POLLER_ENABLED = process.env.POLLER_ENABLED !== 'false';
 
 // Startup log
 [
   'GTFS_RAIL_OCCUPANCY', 'GTFS_BUS_OCCUPANCY', 'GTFS_RAIL_SCHEDULE', 'GTFS_RAIL_TRIP_UPDATES',
   'SCHEDULE_EARLY_SEC', 'SCHEDULE_ONTIME_SEC', 'SCHEDULE_MINOR_SEC',
 ].forEach(k => console.log(`[poller] ${k}=${process.env[k] ?? '(unset)'}`));
+console.log(`[poller] POLLER_ENABLED=${POLLER_ENABLED}`);
 if (GTFS_TRIP_UPDATES_ENABLED) {
   console.log(`[poller]   VP join: ${GTFS_RAIL_ENABLED ? 'ENABLED (rail VP feed)' : 'DISABLED (fallback to TU vehicle.id)'}`);
 }
@@ -202,6 +204,57 @@ function computeAdherence(trainPositions, standardRoutes) {
   return { trains, summary, lineSummaries: Object.values(byLine) };
 }
 
+/**
+ * Batch-query scheduled stop times for matchable trips across active and previous versions.
+ * Previous rows are inserted first; active rows override on the same key (active wins).
+ *
+ * @param {object[]} matchableTrips  - trips with { tripId, refStopSequence }
+ * @param {object[]} versions        - [{_id, status, feedDate}] (active + previous)
+ * @returns {Promise<{ schedMap: Map, matchedActive: number, matchedPrevious: number }>}
+ */
+async function lookupScheduledTimes(matchableTrips, versions) {
+  if (!matchableTrips.length || !versions.length) {
+    return { schedMap: new Map(), matchedActive: 0, matchedPrevious: 0 };
+  }
+
+  const versionIds = versions.map(v => v._id);
+  const refPairs   = matchableTrips.map(t => ({ tripId: t.tripId, stopSequence: t.refStopSequence }));
+
+  const staticRows = await GtfsStopTime.find({
+    version: { $in: versionIds },
+    $or: refPairs,
+  }).lean();
+
+  // Build a versionId → status lookup for O(1) access
+  const versionStatus = {};
+  for (const v of versions) versionStatus[v._id.toString()] = v.status;
+
+  const schedMap = new Map();
+
+  // First pass: previous rows fill the map
+  for (const r of staticRows) {
+    if (versionStatus[r.version.toString()] === 'previous') {
+      schedMap.set(`${r.tripId}:${r.stopSequence}`, { row: r, source: 'previous' });
+    }
+  }
+  // Second pass: active rows override (active wins on conflict)
+  for (const r of staticRows) {
+    if (versionStatus[r.version.toString()] === 'active') {
+      schedMap.set(`${r.tripId}:${r.stopSequence}`, { row: r, source: 'active' });
+    }
+  }
+
+  let matchedActive = 0;
+  let matchedPrevious = 0;
+  for (const trip of matchableTrips) {
+    const entry = schedMap.get(`${trip.tripId}:${trip.refStopSequence}`);
+    if (entry?.source === 'active')   matchedActive++;
+    else if (entry?.source === 'previous') matchedPrevious++;
+  }
+
+  return { schedMap, matchedActive, matchedPrevious };
+}
+
 async function fetchAndStore() {
   const snapshotAt = new Date();
 
@@ -344,20 +397,16 @@ async function fetchAndStore() {
             ?? (/^\d+$/.test(trip.vehicleId ?? '') ? trip.vehicleId : null);
         }
 
-        // Static schedule lookup — compute delaySeconds per trip
-        const activeVer = await GtfsVersion.findOne({ status: 'active' }, { _id: 1 }).lean();
+        // Static schedule lookup — compute delaySeconds per trip (active + previous versions)
+        const versions = await GtfsVersion.find(
+          { status: { $in: ['active', 'previous'] } },
+          { _id: 1, status: 1, feedDate: 1 },
+        ).lean();
         const matchableTrips = rawTrips.filter(t => t.refStopSequence != null);
 
-        if (activeVer && matchableTrips.length) {
-          // Batch-query all reference stops in a single MongoDB query
-          const refPairs = matchableTrips.map(t => ({ tripId: t.tripId, stopSequence: t.refStopSequence }));
-          const staticRows = await GtfsStopTime.find({
-            version: activeVer._id,
-            $or: refPairs,
-          }).lean();
-
-          const schedMap = new Map();
-          for (const r of staticRows) schedMap.set(`${r.tripId}:${r.stopSequence}`, r);
+        if (versions.length && matchableTrips.length) {
+          const { schedMap, matchedActive, matchedPrevious } =
+            await lookupScheduledTimes(matchableTrips, versions);
 
           const matchCount = matchableTrips.filter(t =>
             schedMap.has(`${t.tripId}:${t.refStopSequence}`)
@@ -365,14 +414,28 @@ async function fetchAndStore() {
           const matchRate = matchableTrips.length > 0 ? matchCount / matchableTrips.length : 0;
           const degraded  = matchRate < 0.80;
           if (degraded) {
-            console.warn(`[poller] TripUpdate degraded: match rate ${(matchRate * 100).toFixed(1)}%`);
+            const unmatched = matchableTrips
+              .filter(t => !schedMap.has(`${t.tripId}:${t.refStopSequence}`))
+              .slice(0, 5)
+              .map(t => t.tripId);
+            const feedDates = versions.map(v => `${v.status}:${v.feedDate}`).join(', ');
+            console.warn(`[poller] TripUpdate degraded: match rate ${(matchRate * 100).toFixed(1)}% (${feedDates}); unmatched sample: ${unmatched.join(', ')}`);
+          }
+
+          // Update lastMatchAt on the previous version if it contributed to any match
+          if (matchedPrevious > 0) {
+            const prevVer = versions.find(v => v.status === 'previous');
+            if (prevVer) {
+              await GtfsVersion.updateOne({ _id: prevVer._id }, { $set: { lastMatchAt: new Date() } });
+            }
           }
 
           // Compute delay = actual arrival time − scheduled arrival time
           for (const trip of rawTrips) {
             if (trip.refStopSequence == null) continue;
-            const row = schedMap.get(`${trip.tripId}:${trip.refStopSequence}`);
-            if (!row) continue;
+            const entry = schedMap.get(`${trip.tripId}:${trip.refStopSequence}`);
+            if (!entry) continue;
+            const row = entry.row;
 
             // Convert YYYYMMDD startDate to "YYYY-MM-DD" for gtfsToUtc
             const dateStr = trip.startDate
@@ -397,13 +460,15 @@ async function fetchAndStore() {
           // Compute and persist schedule adherence snapshot
           try {
             const sas = computeScheduleAdherence(rawTrips, degraded, matchRate);
-            await ScheduleAdherenceSnapshot.create({ snapshotAt, feedTimestamp: tuFeedTs, ...sas });
+            await ScheduleAdherenceSnapshot.create({
+              snapshotAt, feedTimestamp: tuFeedTs, ...sas, matchedActive, matchedPrevious,
+            });
           } catch (err) {
             console.error('[poller] ScheduleAdherence computation error:', err.message);
           }
         } else {
-          // No active GTFS static version — save trips with null delays, skip adherence snapshot
-          if (!activeVer) {
+          // No GTFS static version available — save trips with null delays, skip adherence snapshot
+          if (!versions.length) {
             console.warn('[poller] No active GTFS static version — skipping delay computation');
           }
           if (rawTrips.length) {
@@ -435,10 +500,14 @@ async function fetchAndStore() {
 }
 
 function startPolling() {
+  if (!POLLER_ENABLED) {
+    console.log('[poller] POLLER_ENABLED=false — polling and schedule loader disabled');
+    return;
+  }
   fetchAndStore();
   cron.schedule('*/30 * * * * *', fetchAndStore);
   wmataUsage.scheduleDailyReset();
   wmataUsage.scheduleHourlyLog();
 }
 
-module.exports = { startPolling, fetchAndStore, computeScheduleAdherence };
+module.exports = { startPolling, fetchAndStore, computeScheduleAdherence, lookupScheduledTimes };

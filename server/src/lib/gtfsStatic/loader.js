@@ -94,6 +94,44 @@ function parseFile(fileEntry) {
 }
 
 /**
+ * Delete previous-status versions that are no longer needed:
+ *   - Any version older than 36 hours
+ *   - Any version older than 1 hour that has never matched a live trip (lastMatchAt === null)
+ *   - Surplus versions beyond the newest one (keeps at most 1 previous)
+ */
+async function cleanupPreviousVersions() {
+  const prevVersions = await GtfsVersion.find({ status: 'previous' }).sort({ previousSince: -1 });
+  if (!prevVersions.length) return;
+
+  const now = Date.now();
+  const h36 = 36 * 60 * 60 * 1000;
+  const h1  =  1 * 60 * 60 * 1000;
+
+  // Keep at most 1 previous version (newest by previousSince); delete extras first
+  for (let i = 1; i < prevVersions.length; i++) {
+    const v = prevVersions[i];
+    console.log(`[gtfs-static] Cleaning up surplus previous version ${v._id}`);
+    await deleteVersionData(v._id);
+    await GtfsVersion.deleteOne({ _id: v._id });
+  }
+
+  // Check the remaining single previous version for time-based cleanup
+  const v = prevVersions[0];
+  const sinceMs = now - (v.previousSince?.getTime() ?? now);
+  const neverMatched = v.lastMatchAt === null;
+
+  if (sinceMs > h36) {
+    console.log(`[gtfs-static] Cleaning up previous version ${v._id} (age=${Math.round(sinceMs / 3600000)}h > 36h)`);
+    await deleteVersionData(v._id);
+    await GtfsVersion.deleteOne({ _id: v._id });
+  } else if (sinceMs > h1 && neverMatched) {
+    console.log(`[gtfs-static] Cleaning up previous version ${v._id} (age=${Math.round(sinceMs / 3600000)}h, never matched)`);
+    await deleteVersionData(v._id);
+    await GtfsVersion.deleteOne({ _id: v._id });
+  }
+}
+
+/**
  * Main entry point: download WMATA rail GTFS static, load into MongoDB.
  * Performs a versioned swap so readers always see consistent data.
  * Safe to call on startup and daily — skips if feed hash is unchanged.
@@ -132,6 +170,9 @@ async function loadGtfsStatic(opts = {}) {
       return { skipped: true };
     }
   }
+
+  // Clean up expired previous versions before starting a new load
+  await cleanupPreviousVersions();
 
   // Clean up any orphaned 'loading' versions from previous crashed runs
   const orphans = await GtfsVersion.find({ status: 'loading' });
@@ -180,15 +221,13 @@ async function loadGtfsStatic(opts = {}) {
     await GtfsVersion.updateOne({ _id: versionId }, { $set: { status: 'active' } });
     console.log(`[gtfs-static] Version ${versionId} is now active`);
 
-    // --- Step 6: Mark old active version stale and delete its data ---
-    const oldVersion = await GtfsVersion.findOne({
-      status: 'active', _id: { $ne: versionId },
-    });
-    if (oldVersion) {
-      await GtfsVersion.updateOne({ _id: oldVersion._id }, { $set: { status: 'stale' } });
-      await deleteVersionData(oldVersion._id);
-      await GtfsVersion.deleteOne({ _id: oldVersion._id });
-      console.log(`[gtfs-static] Deleted stale version ${oldVersion._id}`);
+    // --- Step 6b: Demote old active version to 'previous' (keep data for in-flight RT trips) ---
+    const oldActive = await GtfsVersion.findOne({ status: 'active', _id: { $ne: versionId } });
+    if (oldActive) {
+      await GtfsVersion.updateOne({ _id: oldActive._id }, {
+        $set: { status: 'previous', previousSince: new Date(), lastMatchAt: null },
+      });
+      console.log(`[gtfs-static] Version ${oldActive._id} demoted to previous`);
     }
 
     return { newVersionId: versionId.toString() };
@@ -359,4 +398,4 @@ async function deleteVersionData(versionId) {
   await GtfsRoute.deleteMany({ version: versionId });
 }
 
-module.exports = { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE, computeAndStoreMeta };
+module.exports = { loadGtfsStatic, deriveWmataCode, ROUTE_TO_LINE, computeAndStoreMeta, cleanupPreviousVersions };

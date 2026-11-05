@@ -4,8 +4,10 @@ const gtfsVersionSchema = new mongoose.Schema({
   feedHash:  { type: String, required: true },
   feedDate:  { type: String, required: true }, // "YYYYMMDD" from feed_info.txt feed_start_date
   agencyTz:  { type: String, default: 'America/New_York' },
-  status:    { type: String, enum: ['loading', 'active', 'stale'], default: 'loading' },
+  status:    { type: String, enum: ['loading', 'active', 'previous', 'stale'], default: 'loading' },
   loadedAt:  { type: Date, default: Date.now },
+  previousSince: { type: Date, default: null },
+  lastMatchAt:   { type: Date, default: null },
   meta: {
     computedAt:          { type: Date, default: null },  // null = meta not yet computed
     feedVersion:         { type: String, default: '' },
