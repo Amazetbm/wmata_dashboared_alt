@@ -88,24 +88,37 @@ describe('serviceHistoryHandler — schedule method', () => {
     avgCoverageRate: 0.88,
   };
 
-  it('calls /api/adherence/summary?method=schedule&mode=history for method=schedule', async () => {
-    const fetcher = jest.fn().mockResolvedValue(SCHEDULE_RESPONSE);
+  function makeScheduleFetcher(scheduleResponse = SCHEDULE_RESPONSE, incidents: any[] = []) {
+    return jest.fn().mockImplementation((path: string) => {
+      if (path.includes('/adherence/summary')) return Promise.resolve(scheduleResponse);
+      if (path.includes('/incidents/history')) return Promise.resolve(incidents);
+      return Promise.reject(new Error(`Unexpected path: ${path}`));
+    });
+  }
+
+  it('calls summary endpoint with from= and to= params (not days=)', async () => {
+    const fetcher = makeScheduleFetcher();
     await serviceHistoryHandler({ ...RANGE, method: 'schedule' }, fetcher as any);
 
-    const call = (fetcher.mock.calls[0] as string[])[0];
-    expect(call).toContain('/api/adherence/summary?method=schedule&mode=history');
+    const calls = (fetcher.mock.calls as string[][]).map(c => c[0]);
+    const summaryCall = calls.find(p => p.includes('/adherence/summary'));
+    expect(summaryCall).toContain('/api/adherence/summary?method=schedule&mode=history');
+    expect(summaryCall).toContain('from=');
+    expect(summaryCall).toContain('to=');
+    expect(summaryCall).not.toContain('days=');
   });
 
   it('appends line param when line is provided for schedule method', async () => {
-    const fetcher = jest.fn().mockResolvedValue(SCHEDULE_RESPONSE);
+    const fetcher = makeScheduleFetcher();
     await serviceHistoryHandler({ ...RANGE, method: 'schedule', line: 'RD' }, fetcher as any);
 
-    const call = (fetcher.mock.calls[0] as string[])[0];
-    expect(call).toContain('line=RD');
+    const calls = (fetcher.mock.calls as string[][]).map(c => c[0]);
+    const summaryCall = calls.find(p => p.includes('/adherence/summary'));
+    expect(summaryCall).toContain('line=RD');
   });
 
   it('returns schedule history with degradedCount and avgCoverageRate', async () => {
-    const fetcher = jest.fn().mockResolvedValue(SCHEDULE_RESPONSE);
+    const fetcher = makeScheduleFetcher();
     const result = await serviceHistoryHandler({ ...RANGE, method: 'schedule' }, fetcher as any);
 
     expect(result.isError).toBeUndefined();
@@ -114,6 +127,30 @@ describe('serviceHistoryHandler — schedule method', () => {
     expect(data.degradedCount).toBe(1);
     expect(data.avgCoverageRate).toBe(0.88);
     expect(data.averages.onTimePct).toBe(72);
+  });
+
+  it('includes incidentCount and incidents in schedule response', async () => {
+    const incidents = [
+      { IncidentID: 'INC001', Description: 'Signal problem', IncidentType: 'Delay', LinesAffected: 'RD;', DateUpdated: '2026-09-24T10:00:00Z', snapshotAt: '' },
+    ];
+    const fetcher = makeScheduleFetcher(SCHEDULE_RESPONSE, incidents);
+    const result = await serviceHistoryHandler({ ...RANGE, method: 'schedule' }, fetcher as any);
+
+    const data = JSON.parse(result.content[0].text);
+    expect(data.incidentCount).toBe(1);
+    expect(data.incidents).toHaveLength(1);
+    expect(data.incidents[0].id).toBe('INC001');
+  });
+
+  it('sub-day range passes exact from/to ISO strings to summary endpoint', async () => {
+    const shortRange = { from: '2026-11-05T06:00:00Z', to: '2026-11-05T10:00:00Z' };
+    const fetcher = makeScheduleFetcher();
+    await serviceHistoryHandler({ ...shortRange, method: 'schedule' }, fetcher as any);
+
+    const calls = (fetcher.mock.calls as string[][]).map(c => c[0]);
+    const summaryCall = calls.find(p => p.includes('/adherence/summary'));
+    expect(summaryCall).toContain(encodeURIComponent(shortRange.from));
+    expect(summaryCall).toContain(encodeURIComponent(shortRange.to));
   });
 
   it('returns isError when API returns 503 for schedule method', async () => {

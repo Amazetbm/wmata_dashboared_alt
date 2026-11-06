@@ -296,7 +296,11 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
     return Array.from(map.entries())
       .sort(([a], [b]) => a - b)
       .map(([key, snaps]) => {
-        const valid = snaps.filter(s => (s.summary?.total ?? 0) > 0);
+        const valid = snaps.filter(s => {
+          const p = (s.summary?.early ?? 0) + (s.summary?.onTime ?? 0)
+            + (s.summary?.minor ?? 0) + (s.summary?.significant ?? 0);
+          return p > 0;
+        });
         if (!valid.length) return null;
         const avg = (fn: (s: any) => number) =>
           Math.round(valid.reduce((a, s) => a + fn(s), 0) / valid.length);

@@ -298,4 +298,22 @@ describe('AdherencePanelComponent', () => {
 
     expect(component.view).toBe('historical');
   });
+
+  it('zero-prediction schedule snapshot produces gap (no chart point)', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne('/api/adherence/live').flush(makeAdherenceResponse([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.scheduleMode.set('schedule');
+    component.switchView('historical');
+
+    const histReq = httpMock.expectOne(r => r.url === '/api/adherence/schedule/history');
+    histReq.flush([{
+      snapshotAt: new Date().toISOString(),
+      summary: { total: 10, early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 10, canceled: 0, unscheduled: 0, added: 0 },
+    }]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.buckets()).toHaveLength(0);
+  });
 });
