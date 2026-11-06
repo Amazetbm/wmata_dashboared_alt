@@ -3,7 +3,8 @@ import { z } from 'zod';
 import apiFetch, { ApiError, type Fetcher } from '../client.js';
 
 const DESCRIPTION =
-  'Adherence trends and incident counts over a date range (ISO 8601). Optional line filter. Use for "how has service been lately" questions.';
+  'Adherence trends and incident counts over a date range (ISO 8601). Optional line filter. Use for "how has service been lately" questions. ' +
+  'method=headway (default) uses headway-based adherence; method=schedule uses GTFS-RT schedule adherence (requires GTFS_RAIL_TRIP_UPDATES=true).';
 
 const LINE_ENUM = z.enum(['RD', 'BL', 'OR', 'SV', 'GR', 'YL']);
 type Line = z.infer<typeof LINE_ENUM>;
@@ -37,11 +38,50 @@ function lineInAffected(linesAffected: string, line: string): boolean {
     .includes(line);
 }
 
+interface ScheduleHistoryResponse {
+  from: string;
+  to: string;
+  snapshotCount: number;
+  averages: {
+    onTimePct: number | null;
+    earlyPct: number;
+    minorPct: number;
+    significantPct: number;
+    noPredictionPct: number;
+    canceled: number;
+    unscheduled: number;
+    added: number;
+  } | null;
+  lineTrends: Record<string, unknown>;
+  degradedCount: number;
+  avgCoverageRate: number | null;
+}
+
 export async function serviceHistoryHandler(
-  { from, to, line }: { from: string; to: string; line?: Line },
+  { from, to, line, method = 'headway' }: { from: string; to: string; line?: Line; method?: 'headway' | 'schedule' },
   fetcher: Fetcher = apiFetch,
 ) {
   try {
+    if (method === 'schedule') {
+      const days = Math.round((new Date(to).getTime() - new Date(from).getTime()) / (24 * 60 * 60 * 1000));
+      const path = `/api/adherence/summary?method=schedule&mode=history&days=${days}` +
+        (line ? `&line=${line}` : '');
+      const data = await fetcher<ScheduleHistoryResponse>(path);
+
+      const result = {
+        days,
+        method: 'schedule' as const,
+        range: { from, to },
+        line: line ?? 'all',
+        snapshotCount: data.snapshotCount,
+        averages: data.averages,
+        lineTrends: data.lineTrends,
+        degradedCount: data.degradedCount,
+        avgCoverageRate: data.avgCoverageRate,
+      };
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+    }
+
     const adherencePath =
       `/api/adherence/history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` +
       (line ? `&line=${line}` : '');
@@ -92,8 +132,14 @@ export async function serviceHistoryHandler(
 
     return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
   } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return {
+        isError: true as const,
+        content: [{ type: 'text' as const, text: 'Schedule history requires GTFS_RAIL_TRIP_UPDATES=true' }],
+      };
+    }
     const msg = err instanceof ApiError ? `API error ${err.status}: ${err.message}` : String(err);
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ error: msg }) }], isError: true };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ error: msg }) }], isError: true as const };
   }
 }
 
@@ -105,6 +151,7 @@ export function registerServiceHistory(server: McpServer) {
       from: z.string().datetime({ offset: true }),
       to: z.string().datetime({ offset: true }),
       line: LINE_ENUM.optional(),
+      method: z.enum(['headway', 'schedule']).default('headway').optional(),
     },
     (args) => serviceHistoryHandler(args),
   );

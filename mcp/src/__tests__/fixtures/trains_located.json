@@ -12,7 +12,8 @@
       "status": "on-time",
       "location": "at Metro Center (A01)",
       "destination": "Shady Grove",
-      "occupancy": { "status": 1, "label": "Many seats (<20% full)" }
+      "occupancy": { "status": 1, "label": "Many seats (<20% full)" },
+      "scheduleDelay": { "seconds": 45, "label": "On Time" }
     },
     {
       "trainId": "T124",
@@ -20,7 +21,8 @@
       "carCount": 6,
       "status": "minor",
       "location": "between Foggy Bottom (C04) and Rosslyn (C05)",
-      "destination": "Glenmont"
+      "destination": "Glenmont",
+      "scheduleDelay": null
     }
   ]
 }

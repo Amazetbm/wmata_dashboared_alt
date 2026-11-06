@@ -1,5 +1,8 @@
 const router = require('express').Router();
 const AdherenceSnapshot = require('../models/AdherenceSnapshot');
+const { getScheduleAdherence } = require('../assistant/toolHandlers/getScheduleAdherence');
+
+const GTFS_RAIL_TRIP_UPDATES = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
 
 // Most recent snapshot — full detail including trains array
 router.get('/live', async (req, res) => {
@@ -56,6 +59,32 @@ router.get('/snapshot', async (req, res) => {
       closest = after;
     }
     res.json(closest || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unified summary endpoint for both headway and schedule adherence
+router.get('/summary', async (req, res) => {
+  const { method = 'headway', mode = 'live', line, days } = req.query;
+
+  if (!['headway', 'schedule'].includes(method))
+    return res.status(400).json({ error: 'method must be headway or schedule' });
+  if (!['live', 'history', 'snapshot'].includes(mode))
+    return res.status(400).json({ error: 'mode must be live, history, or snapshot' });
+  if (method === 'schedule' && !GTFS_RAIL_TRIP_UPDATES)
+    return res.status(503).json({ error: 'GTFS_RAIL_TRIP_UPDATES is not enabled' });
+
+  try {
+    let params = { method, mode, line };
+    if (mode === 'history') {
+      const daysNum = days ? Number(days) : 7;
+      const to = new Date();
+      const from = new Date(to.getTime() - daysNum * 24 * 60 * 60 * 1000);
+      params = { ...params, from: from.toISOString(), to: to.toISOString() };
+    }
+    const data = await getScheduleAdherence(params);
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

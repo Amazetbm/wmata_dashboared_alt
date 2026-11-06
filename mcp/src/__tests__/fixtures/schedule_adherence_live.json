@@ -1,0 +1,74 @@
+{
+  "snapshotAt": "2026-11-06T12:00:00.000Z",
+  "coverageRate": 0.87,
+  "degraded": false,
+  "summary": {
+    "total": 120,
+    "onTime": 70,
+    "early": 8,
+    "minor": 25,
+    "significant": 7,
+    "noPrediction": 10
+  },
+  "lineSummaries": [
+    {
+      "lineCode": "RD",
+      "total": 40,
+      "onTime": 25,
+      "early": 3,
+      "minor": 8,
+      "significant": 2,
+      "noPrediction": 2
+    },
+    {
+      "lineCode": "BL",
+      "total": 35,
+      "onTime": 22,
+      "early": 2,
+      "minor": 9,
+      "significant": 2,
+      "noPrediction": 0
+    },
+    {
+      "lineCode": "OR",
+      "total": 45,
+      "onTime": 23,
+      "early": 3,
+      "minor": 8,
+      "significant": 3,
+      "noPrediction": 8
+    }
+  ],
+  "trains": [
+    {
+      "trainId": "T001",
+      "lineCode": "RD",
+      "tripId": "trip-001",
+      "scheduleDelay": { "seconds": 450, "label": "Delay" }
+    },
+    {
+      "trainId": "T002",
+      "lineCode": "BL",
+      "tripId": "trip-002",
+      "scheduleDelay": { "seconds": 300, "label": "Minor Delay" }
+    },
+    {
+      "trainId": "T003",
+      "lineCode": "OR",
+      "tripId": "trip-003",
+      "scheduleDelay": { "seconds": 600, "label": "Delay" }
+    },
+    {
+      "trainId": "T004",
+      "lineCode": "RD",
+      "tripId": "trip-004",
+      "scheduleDelay": { "seconds": -90, "label": "Early" }
+    },
+    {
+      "trainId": "T005",
+      "lineCode": "BL",
+      "tripId": null,
+      "scheduleDelay": null
+    }
+  ]
+}

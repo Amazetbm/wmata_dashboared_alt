@@ -136,16 +136,17 @@ Set `ASSISTANT_ENABLED=false` to disable the feature without removing the enviro
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server exposing live WMATA data as tools for AI clients (Claude Code, Claude Desktop, MCP Inspector). Accessible at `/mcp` via the nginx reverse proxy.
 
-**Six tools:**
+**Seven tools:**
 
 | Tool | What it does |
 |---|---|
 | `next_arrivals` | Next-train arrival predictions for a station code |
 | `line_status` | Active rail incidents filtered by line |
 | `accessibility_status` | Active elevator and escalator outages |
-| `service_history` | Historical schedule-adherence summaries |
-| `live_trains` | Current train positions with station-relative location and destination name; optional line filter |
+| `service_history` | Historical schedule-adherence summaries; `method=schedule` returns GTFS-RT-based schedule adherence history (requires `GTFS_RAIL_TRIP_UPDATES=true`) |
+| `live_trains` | Current train positions with station-relative location, destination, and `scheduleDelay` (seconds late/early, null if GTFS-RT disabled) |
 | `bus_positions` | Current bus positions — route summary or filtered list with coordinates and deviation |
+| `schedule_adherence` | Live GTFS-RT schedule adherence: on-time %, per-line breakdown, top 10 most-delayed trains. Requires `GTFS_RAIL_SCHEDULE=true` and `GTFS_RAIL_TRIP_UPDATES=true` |
 
 **Security:** Every request requires `Authorization: Bearer <MCP_AUTH_TOKEN>`. The server refuses to start in HTTP mode without a token.
 
@@ -511,6 +512,7 @@ Each 30-second snapshot stores per-train detail plus pre-aggregated network and 
 | GET | `/api/adherence/live` | Most recent adherence snapshot (full detail) |
 | GET | `/api/adherence/history?from=&to=&line=` | Historical adherence summaries |
 | GET | `/api/adherence/snapshot?at=` | Full snapshot nearest to a given timestamp |
+| GET | `/api/adherence/summary?method=headway\|schedule&mode=live\|history\|snapshot&line=&days=` | Unified adherence summary; `method=schedule` requires `GTFS_RAIL_TRIP_UPDATES=true` |
 | GET | `/api/outages` | Live elevator/escalator outages (structured detail) |
 | GET | `/api/outages/history?from=&to=` | Historical outage records + per-day breakdown |
 | GET | `/api/map` | Train positions + stations + incidents + line polylines |

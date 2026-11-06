@@ -5,6 +5,9 @@ const {
   enrichWithTripUpdates,
   classifyDelay,
   DELAY_LABELS,
+  EARLY_SEC,
+  ONTIME_SEC,
+  MINOR_SEC,
 } = require('../../lib/tripUpdateEnricher');
 
 const NOW = 1700000000000; // fixed reference time
@@ -86,18 +89,23 @@ test('buildTripUpdateMap skips trainId when null', () => {
 });
 
 // ── classifyDelay boundaries ──────────────────────────────────────────────────
+// EARLY_SEC default: -60, ONTIME_SEC default: 120, MINOR_SEC default: 300
+
+test('classifyDelay returns unknown for null', () => {
+  expect(classifyDelay(null)).toBe('unknown');
+  expect(classifyDelay(undefined)).toBe('unknown');
+});
 
 test.each([
   [-61,  'Early'],
-  [-60,  'Early'],
+  [-60,  'Early'],       // <= EARLY_SEC (-60) → early
+  [-59,  'On Time'],     // > EARLY_SEC → onTime
   [0,    'On Time'],
-  [59,   'On Time'],
-  [60,   'Slight Delay'],
-  [299,  'Slight Delay'],
-  [300,  'Delay'],
-  [599,  'Delay'],
-  [600,  'Significant Delay'],
-  [1200, 'Significant Delay'],
+  [120,  'On Time'],     // <= ONTIME_SEC (120) → onTime
+  [121,  'Minor Delay'], // > ONTIME_SEC → minorDelay
+  [300,  'Minor Delay'], // <= MINOR_SEC (300) → minorDelay
+  [301,  'Delay'],       // > MINOR_SEC → delay
+  [1200, 'Delay'],
 ])('delay %ds → label %s', (seconds, expectedLabel) => {
   expect(classifyDelay(seconds)).toBe(expectedLabel);
 });
@@ -135,7 +143,7 @@ test('sets scheduleDelay via trainIdMap (primary key)', async () => {
   const doc = makeDoc([makeTrip({ trainId: 'T1', delaySeconds: 200 })]);
   const vehicles = [{ TrainId: 'T1' }];
   const result = await enrichWithTripUpdates(vehicles, 'TrainId', true, async () => doc);
-  expect(result[0].scheduleDelay).toEqual({ seconds: 200, label: 'Slight Delay' });
+  expect(result[0].scheduleDelay).toEqual({ seconds: 200, label: 'Minor Delay' });
 });
 
 // ── enrichWithTripUpdates — fallback vehicleId match ─────────────────────────
@@ -145,7 +153,7 @@ test('falls back to vehicleIdMap when trainId not matched', async () => {
   const doc = makeDoc([makeTrip({ vehicleId: '044', delaySeconds: 700 })]);
   const vehicles = [{ TrainId: '044' }];
   const result = await enrichWithTripUpdates(vehicles, 'TrainId', true, async () => doc);
-  expect(result[0].scheduleDelay).toEqual({ seconds: 700, label: 'Significant Delay' });
+  expect(result[0].scheduleDelay).toEqual({ seconds: 700, label: 'Delay' });
 });
 
 test('prefers trainIdMap over vehicleIdMap when both match the same id', async () => {
@@ -174,7 +182,7 @@ test('works with camelCase idField (trainId)', async () => {
   const doc = makeDoc([makeTrip({ trainId: 'T5', delaySeconds: 700 })]);
   const vehicles = [{ trainId: 'T5', lineCode: 'RD' }];
   const result = await enrichWithTripUpdates(vehicles, 'trainId', true, async () => doc);
-  expect(result[0].scheduleDelay).toEqual({ seconds: 700, label: 'Significant Delay' });
+  expect(result[0].scheduleDelay).toEqual({ seconds: 700, label: 'Delay' });
 });
 
 // ── enrichWithTripUpdates — null delaySeconds ─────────────────────────────────
@@ -205,7 +213,6 @@ test('unmatched vehicle is preserved with scheduleDelay: null, not dropped', asy
 test('DELAY_LABELS has all expected entries', () => {
   expect(DELAY_LABELS.early).toBe('Early');
   expect(DELAY_LABELS.onTime).toBe('On Time');
-  expect(DELAY_LABELS.slightDelay).toBe('Slight Delay');
+  expect(DELAY_LABELS.minorDelay).toBe('Minor Delay');
   expect(DELAY_LABELS.delay).toBe('Delay');
-  expect(DELAY_LABELS.significantDelay).toBe('Significant Delay');
 });
