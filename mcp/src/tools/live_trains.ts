@@ -5,9 +5,11 @@ import apiFetch, { ApiError, type Fetcher } from '../client.js';
 const DESCRIPTION =
   'Current positions and schedule adherence for trains on a rail line. ' +
   'Returns station-relative location (e.g. "at Metro Center (A01)", "between Foggy Bottom and Rosslyn"), ' +
-  'destination name, and occupancy when available for each train, plus a line adherence summary. ' +
+  'destination name, occupancy, and scheduleDelay when available for each train, plus a line adherence summary. ' +
   'Occupancy bands: "Many seats (<20% full)", "Few seats (20–32% full)", "Full (≥33% full)". ' +
   'Occupancy is null when the GTFS-RT feed is disabled or stale. ' +
+  'scheduleDelay is { seconds, label } when GTFS_RAIL_TRIP_UPDATES is enabled, null otherwise. ' +
+  'Positive seconds = late, negative = early. ' +
   'Omit line to get all lines.';
 
 const LINE_ENUM = z.enum(['RD', 'BL', 'OR', 'SV', 'GR', 'YL']);
@@ -21,6 +23,7 @@ interface Train {
   location: string;
   destination: string;
   occupancy?: { status: number; label: string | null } | null;
+  scheduleDelay?: { seconds: number; label: string } | null;
 }
 
 interface TrainsLocated {
@@ -53,6 +56,7 @@ export async function liveTrainsHandler(
         location: t.location,
         destination: t.destination,
         ...(t.occupancy !== undefined ? { occupancy: t.occupancy } : {}),
+        scheduleDelay: t.scheduleDelay ?? null,
       })),
     };
 

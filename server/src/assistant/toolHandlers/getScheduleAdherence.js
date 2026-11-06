@@ -41,10 +41,14 @@ async function getScheduleAdherence({ mode = 'live', method = 'headway', from, t
   // History mode — summarise trend; return averages not raw array
   if (!from || !to) throw new Error('from and to are required for mode=history');
 
+  const projection = isSchedule
+    ? { snapshotAt: 1, summary: 1, lineSummaries: 1, coverageRate: 1, degraded: 1, _id: 0 }
+    : { snapshotAt: 1, summary: 1, lineSummaries: 1, _id: 0 };
+
   const snapshots = await Model
     .find(
       { snapshotAt: { $gte: new Date(from), $lte: new Date(to) } },
-      { snapshotAt: 1, summary: 1, lineSummaries: 1, _id: 0 }
+      projection
     )
     .sort({ snapshotAt: 1 })
     .limit(2000)
@@ -88,11 +92,12 @@ async function getScheduleAdherence({ mode = 'live', method = 'headway', from, t
     }
 
     const pct = (n, d) => d > 0 ? Math.round(100 * n / d) : 0;
+    const predictedTotal = totals.early + totals.onTime + totals.minor + totals.significant;
     const averages = totals.total > 0 ? {
-      earlyPct:        pct(totals.early,        totals.total),
-      onTimePct:       pct(totals.onTime,        totals.total),
-      minorPct:        pct(totals.minor,         totals.total),
-      significantPct:  pct(totals.significant,   totals.total),
+      earlyPct:        pct(totals.early,        predictedTotal),
+      onTimePct:       predictedTotal ? Math.round(totals.onTime / predictedTotal * 100) : null,
+      minorPct:        pct(totals.minor,         predictedTotal),
+      significantPct:  pct(totals.significant,   predictedTotal),
       noPredictionPct: pct(totals.noPrediction,  totals.total),
       canceled:        totals.canceled,
       unscheduled:     totals.unscheduled,
@@ -115,7 +120,12 @@ async function getScheduleAdherence({ mode = 'live', method = 'headway', from, t
       }
     }
 
-    return { from, to, snapshotCount: snapshots.length, averages, lineTrends };
+    const degradedCount = snapshots.filter(s => s.degraded).length;
+    const avgCoverageRate = snapshots.length
+      ? Math.round(snapshots.reduce((a, s) => a + (s.coverageRate ?? 0), 0) / snapshots.length * 100) / 100
+      : null;
+
+    return { from, to, snapshotCount: snapshots.length, averages, lineTrends, degradedCount, avgCoverageRate };
   }
 
   // Headway method (default)

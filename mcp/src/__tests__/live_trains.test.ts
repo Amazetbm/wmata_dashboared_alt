@@ -113,4 +113,20 @@ describe('liveTrainsHandler', () => {
     const data = JSON.parse(result.content[0].text);
     expect(data.trains[1]).not.toHaveProperty('occupancy');
   });
+
+  it('passes scheduleDelay through when present on a train', async () => {
+    const fetcher = jest.fn().mockResolvedValue(trainsLocated);
+    const result = await liveTrainsHandler({ line: 'RD' }, fetcher as any);
+
+    const data = JSON.parse(result.content[0].text);
+    expect(data.trains[0].scheduleDelay).toMatchObject({ seconds: 45, label: 'On Time' });
+  });
+
+  it('passes scheduleDelay as null when absent on a train', async () => {
+    const fetcher = jest.fn().mockResolvedValue(trainsLocated);
+    const result = await liveTrainsHandler({ line: 'RD' }, fetcher as any);
+
+    const data = JSON.parse(result.content[0].text);
+    expect(data.trains[1].scheduleDelay).toBeNull();
+  });
 });

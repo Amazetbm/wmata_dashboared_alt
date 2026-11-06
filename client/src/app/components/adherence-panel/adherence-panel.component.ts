@@ -304,10 +304,26 @@ export class AdherencePanelComponent implements OnInit, OnDestroy {
           label: this.bucketLabel(key, rangeMs),
           fromTs: new Date(key),
           toTs: new Date(key + bucketMs),
-          onTimePct:      avg(s => Math.round((s.summary.onTime      ?? 0) / s.summary.total * 100)),
-          minorPct:       avg(s => Math.round((s.summary.minor       ?? 0) / s.summary.total * 100)),
-          significantPct: avg(s => Math.round((s.summary.significant ?? 0) / s.summary.total * 100)),
-          earlyPct:       avg(s => Math.round((s.summary.early       ?? 0) / s.summary.total * 100)),
+          onTimePct: avg(s => {
+            const predicted = (s.summary.early ?? 0) + (s.summary.onTime ?? 0)
+              + (s.summary.minor ?? 0) + (s.summary.significant ?? 0);
+            return predicted ? Math.round((s.summary.onTime ?? 0) / predicted * 100) : 0;
+          }),
+          minorPct: avg(s => {
+            const predicted = (s.summary.early ?? 0) + (s.summary.onTime ?? 0)
+              + (s.summary.minor ?? 0) + (s.summary.significant ?? 0);
+            return predicted ? Math.round((s.summary.minor ?? 0) / predicted * 100) : 0;
+          }),
+          significantPct: avg(s => {
+            const predicted = (s.summary.early ?? 0) + (s.summary.onTime ?? 0)
+              + (s.summary.minor ?? 0) + (s.summary.significant ?? 0);
+            return predicted ? Math.round((s.summary.significant ?? 0) / predicted * 100) : 0;
+          }),
+          earlyPct: avg(s => {
+            const predicted = (s.summary.early ?? 0) + (s.summary.onTime ?? 0)
+              + (s.summary.minor ?? 0) + (s.summary.significant ?? 0);
+            return predicted ? Math.round((s.summary.early ?? 0) / predicted * 100) : 0;
+          }),
         };
       })
       .filter((b): b is BucketPoint => b !== null);

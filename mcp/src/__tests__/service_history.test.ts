@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { createRequire } from 'module';
 import { serviceHistoryHandler } from '../tools/service_history.js';
+import { ApiError } from '../client.js';
 
 const require = createRequire(import.meta.url);
 const adherenceHistory = require('./fixtures/adherence_history.json');
@@ -73,5 +74,53 @@ describe('serviceHistoryHandler', () => {
     const fetcher = jest.fn().mockRejectedValue(new Error('DB error'));
     const result = await serviceHistoryHandler(RANGE, fetcher as any);
     expect(result.isError).toBe(true);
+  });
+});
+
+describe('serviceHistoryHandler — schedule method', () => {
+  const SCHEDULE_RESPONSE = {
+    from: RANGE.from,
+    to: RANGE.to,
+    snapshotCount: 24,
+    averages: { onTimePct: 72, earlyPct: 5, minorPct: 15, significantPct: 8, noPredictionPct: 3, canceled: 0, unscheduled: 0, added: 0 },
+    lineTrends: { RD: { onTimePct: 75 } },
+    degradedCount: 1,
+    avgCoverageRate: 0.88,
+  };
+
+  it('calls /api/adherence/summary?method=schedule&mode=history for method=schedule', async () => {
+    const fetcher = jest.fn().mockResolvedValue(SCHEDULE_RESPONSE);
+    await serviceHistoryHandler({ ...RANGE, method: 'schedule' }, fetcher as any);
+
+    const call = (fetcher.mock.calls[0] as string[])[0];
+    expect(call).toContain('/api/adherence/summary?method=schedule&mode=history');
+  });
+
+  it('appends line param when line is provided for schedule method', async () => {
+    const fetcher = jest.fn().mockResolvedValue(SCHEDULE_RESPONSE);
+    await serviceHistoryHandler({ ...RANGE, method: 'schedule', line: 'RD' }, fetcher as any);
+
+    const call = (fetcher.mock.calls[0] as string[])[0];
+    expect(call).toContain('line=RD');
+  });
+
+  it('returns schedule history with degradedCount and avgCoverageRate', async () => {
+    const fetcher = jest.fn().mockResolvedValue(SCHEDULE_RESPONSE);
+    const result = await serviceHistoryHandler({ ...RANGE, method: 'schedule' }, fetcher as any);
+
+    expect(result.isError).toBeUndefined();
+    const data = JSON.parse(result.content[0].text);
+    expect(data.method).toBe('schedule');
+    expect(data.degradedCount).toBe(1);
+    expect(data.avgCoverageRate).toBe(0.88);
+    expect(data.averages.onTimePct).toBe(72);
+  });
+
+  it('returns isError when API returns 503 for schedule method', async () => {
+    const fetcher = jest.fn().mockRejectedValue(new ApiError(503, 'GTFS not enabled'));
+    const result = await serviceHistoryHandler({ ...RANGE, method: 'schedule' }, fetcher as any);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('GTFS_RAIL_TRIP_UPDATES');
   });
 });

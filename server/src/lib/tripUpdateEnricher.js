@@ -2,18 +2,12 @@
 
 const STALE_MS = 2 * 60 * 1000; // 2 minutes
 
-// Delay thresholds (seconds)
-// <= -60  → 'Early'
-// < 60    → 'On Time'
-// < 300   → 'Slight Delay'
-// < 600   → 'Delay'
-// >= 600  → 'Significant Delay'
+// Delay labels for classifyDelay() — 4 buckets aligned with classifyScheduleDelay3()
 const DELAY_LABELS = {
-  early:            'Early',
-  onTime:           'On Time',
-  slightDelay:      'Slight Delay',
-  delay:            'Delay',
-  significantDelay: 'Significant Delay',
+  early:       'Early',
+  onTime:      'On Time',
+  minorDelay:  'Minor Delay',
+  delay:       'Delay',
 };
 
 // ── 3-bucket classification for schedule adherence ────────────────────────────
@@ -37,11 +31,11 @@ function classifyScheduleDelay3(seconds) {
 }
 
 function classifyDelay(seconds) {
-  if (seconds <= -60)  return DELAY_LABELS.early;
-  if (seconds < 60)    return DELAY_LABELS.onTime;
-  if (seconds < 300)   return DELAY_LABELS.slightDelay;
-  if (seconds < 600)   return DELAY_LABELS.delay;
-  return DELAY_LABELS.significantDelay;
+  if (seconds === null || seconds === undefined) return 'unknown';
+  if (seconds <= EARLY_SEC)   return DELAY_LABELS.early;
+  if (seconds <= ONTIME_SEC)  return DELAY_LABELS.onTime;
+  if (seconds <= MINOR_SEC)   return DELAY_LABELS.minorDelay;
+  return DELAY_LABELS.delay;
 }
 
 /**
