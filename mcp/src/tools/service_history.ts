@@ -63,13 +63,26 @@ export async function serviceHistoryHandler(
 ) {
   try {
     if (method === 'schedule') {
-      const days = Math.round((new Date(to).getTime() - new Date(from).getTime()) / (24 * 60 * 60 * 1000));
-      const path = `/api/adherence/summary?method=schedule&mode=history&days=${days}` +
+      const summaryPath =
+        `/api/adherence/summary?method=schedule&mode=history` +
+        `&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` +
         (line ? `&line=${line}` : '');
-      const data = await fetcher<ScheduleHistoryResponse>(path);
+      const incidentsPath =
+        `/api/incidents/history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+
+      const [data, incidentDocs] = await Promise.all([
+        fetcher<ScheduleHistoryResponse>(summaryPath),
+        fetcher<IncidentDoc[]>(incidentsPath),
+      ]);
+
+      const seen = new Map<string, IncidentDoc>();
+      for (const doc of incidentDocs ?? []) {
+        if (!seen.has(doc.IncidentID)) seen.set(doc.IncidentID, doc);
+      }
+      let incidents = Array.from(seen.values());
+      if (line) incidents = incidents.filter(i => lineInAffected(i.LinesAffected, line));
 
       const result = {
-        days,
         method: 'schedule' as const,
         range: { from, to },
         line: line ?? 'all',
@@ -78,6 +91,14 @@ export async function serviceHistoryHandler(
         lineTrends: data.lineTrends,
         degradedCount: data.degradedCount,
         avgCoverageRate: data.avgCoverageRate,
+        incidentCount: incidents.length,
+        incidents: incidents.map(i => ({
+          id: i.IncidentID,
+          description: i.Description,
+          type: i.IncidentType,
+          lines: (i.LinesAffected ?? '').split(';').map(l => l.trim()).filter(Boolean),
+          updated: i.DateUpdated,
+        })),
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
     }

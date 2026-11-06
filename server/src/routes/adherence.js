@@ -3,6 +3,7 @@ const AdherenceSnapshot = require('../models/AdherenceSnapshot');
 const { getScheduleAdherence } = require('../assistant/toolHandlers/getScheduleAdherence');
 
 const GTFS_RAIL_TRIP_UPDATES = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
+const GTFS_RAIL_SCHEDULE     = process.env.GTFS_RAIL_SCHEDULE     === 'true';
 
 // Most recent snapshot — full detail including trains array
 router.get('/live', async (req, res) => {
@@ -66,24 +67,39 @@ router.get('/snapshot', async (req, res) => {
 
 // Unified summary endpoint for both headway and schedule adherence
 router.get('/summary', async (req, res) => {
-  const { method = 'headway', mode = 'live', line, days } = req.query;
+  const { method = 'headway', mode = 'live', line } = req.query;
+  let { from, to, days } = req.query;
 
   if (!['headway', 'schedule'].includes(method))
     return res.status(400).json({ error: 'method must be headway or schedule' });
   if (!['live', 'history', 'snapshot'].includes(mode))
     return res.status(400).json({ error: 'mode must be live, history, or snapshot' });
-  if (method === 'schedule' && !GTFS_RAIL_TRIP_UPDATES)
-    return res.status(503).json({ error: 'GTFS_RAIL_TRIP_UPDATES is not enabled' });
+  if (method === 'schedule' && (!GTFS_RAIL_TRIP_UPDATES || !GTFS_RAIL_SCHEDULE))
+    return res.status(503).json({ error: 'GTFS_RAIL_TRIP_UPDATES and GTFS_RAIL_SCHEDULE must both be enabled' });
+
+  if (mode === 'history') {
+    if (from || to) {
+      if (!from || !to)
+        return res.status(400).json({ error: 'from and to are both required when either is provided' });
+      const f = new Date(from), t = new Date(to);
+      if (isNaN(f) || isNaN(t))
+        return res.status(400).json({ error: 'from and to must be valid ISO 8601 dates' });
+      if (f >= t)
+        return res.status(400).json({ error: 'from must be before to' });
+    } else {
+      const daysNum = Number(days);
+      if (!days || !Number.isFinite(daysNum) || daysNum <= 0 || !Number.isInteger(daysNum))
+        return res.status(400).json({ error: 'days must be a positive integer when from/to are not provided' });
+      const toDate = new Date();
+      from = new Date(toDate.getTime() - daysNum * 24 * 60 * 60 * 1000).toISOString();
+      to = toDate.toISOString();
+    }
+  }
 
   try {
-    let params = { method, mode, line };
-    if (mode === 'history') {
-      const daysNum = days ? Number(days) : 7;
-      const to = new Date();
-      const from = new Date(to.getTime() - daysNum * 24 * 60 * 60 * 1000);
-      params = { ...params, from: from.toISOString(), to: to.toISOString() };
-    }
-    const data = await getScheduleAdherence(params);
+    const data = await getScheduleAdherence({ method, mode, line, from, to });
+    if (data === null)
+      return res.status(503).json({ error: 'No schedule adherence snapshot available yet' });
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

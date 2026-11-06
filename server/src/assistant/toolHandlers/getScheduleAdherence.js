@@ -107,11 +107,12 @@ async function getScheduleAdherence({ mode = 'live', method = 'headway', from, t
     const lineTrends = {};
     for (const [lc, lt] of Object.entries(lineTotals)) {
       if (lt.total > 0) {
+        const lt_predicted = lt.early + lt.onTime + lt.minor + lt.significant;
         lineTrends[lc] = {
-          earlyPct:        pct(lt.early,        lt.total),
-          onTimePct:       pct(lt.onTime,        lt.total),
-          minorPct:        pct(lt.minor,         lt.total),
-          significantPct:  pct(lt.significant,   lt.total),
+          earlyPct:        pct(lt.early,        lt_predicted),
+          onTimePct:       lt_predicted ? Math.round(lt.onTime / lt_predicted * 100) : null,
+          minorPct:        pct(lt.minor,         lt_predicted),
+          significantPct:  pct(lt.significant,   lt_predicted),
           noPredictionPct: pct(lt.noPrediction,  lt.total),
           canceled:        lt.canceled,
           unscheduled:     lt.unscheduled,
