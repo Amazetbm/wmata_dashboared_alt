@@ -1,0 +1,126 @@
+.bus-adherence-panel {
+  padding: 1rem;
+  font-family: inherit;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  h2 { margin: 0; font-size: 1.1rem; }
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+  select { font-size: 0.85rem; }
+}
+
+.view-toggle {
+  display: flex;
+  button {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    border: 1px solid #555;
+    background: transparent;
+    color: inherit;
+    &.active { background: #333; color: #fff; }
+    &:first-child { border-radius: 4px 0 0 4px; }
+    &:last-child  { border-radius: 0 4px 4px 0; }
+  }
+}
+
+.alert {
+  border-radius: 4px;
+  padding: 0.5rem 0.8rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  &.alert-warning  { background: rgba(237,139,0,0.15); border-left: 3px solid #ED8B00; }
+  &.alert-info     { background: rgba(0,120,200,0.1);  border-left: 3px solid #0078C8; }
+  &.alert-error    { background: rgba(191,0,0,0.1);    border-left: 3px solid #BF0000; }
+}
+
+.summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 70px;
+
+  .metric-label { font-size: 0.7rem; color: #aaa; }
+  .metric-value { font-size: 1.3rem; font-weight: bold; }
+  .on-time      { color: #00B140; }
+  .early        { color: #009CDE; }
+  .minor        { color: #ED8B00; }
+  .significant  { color: #BF0000; }
+}
+
+.snapshot-time {
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+}
+
+.bus-table-container {
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.bus-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+
+  th, td {
+    padding: 0.35rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid #333;
+  }
+
+  th { font-weight: 600; color: #ccc; position: sticky; top: 0; background: #1e1e1e; }
+
+  tr.early       td { color: #009CDE; }
+  tr.ontime      td { color: #00B140; }
+  tr.minor       td { color: #ED8B00; }
+  tr.significant td { color: #BF0000; }
+
+  .empty { text-align: center; color: #666; padding: 1.5rem; }
+}
+
+.hist-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+
+  label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+  select, input { font-size: 0.85rem; }
+  button { padding: 0.3rem 0.7rem; font-size: 0.85rem; cursor: pointer; }
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+}
+
+.loading {
+  color: #aaa;
+  font-size: 0.85rem;
+  padding: 1rem 0;
+}

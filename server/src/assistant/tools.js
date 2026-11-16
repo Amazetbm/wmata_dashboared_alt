@@ -7,7 +7,8 @@ const { getNextTrains }        = require('./toolHandlers/getNextTrains');
 const { getElevatorOutages }   = require('./toolHandlers/getElevatorOutages');
 const { getScheduleAdherence } = require('./toolHandlers/getScheduleAdherence');
 const { getBusIncidents }      = require('./toolHandlers/getBusIncidents');
-const { getBusPositions }      = require('./toolHandlers/getBusPositions');
+const { getBusPositions }          = require('./toolHandlers/getBusPositions');
+const { getBusScheduleAdherence }  = require('./toolHandlers/getBusScheduleAdherence');
 
 const LINE_ENUM = { type: 'string', enum: ['RD', 'BL', 'OR', 'GR', 'YL', 'SV'] };
 
@@ -129,6 +130,21 @@ const TOOL_DEFINITIONS = [
       },
     },
     handler: getBusPositions,
+  },
+  {
+    name: 'get_bus_schedule_adherence',
+    description: 'Get Metrobus schedule adherence powered by GTFS-RT trip updates. Uses WMATA\'s official on-time definition: 2 min early to 7 min late, measured at timepoints. Returns on-time percentage, coverage rate, degraded flag, per-route breakdown, and buses with delay data. Requires GTFS_BUS_TRIP_UPDATES=true. mode=live returns latest snapshot. mode=history aggregates over a date range. delaySeconds is positive for late, negative for early. Omit route for all routes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mode:  { type: 'string', enum: ['live', 'history'], description: 'live or history' },
+        from:  { type: 'string', format: 'date-time', description: 'Required for history' },
+        to:    { type: 'string', format: 'date-time', description: 'Required for history' },
+        route: { type: 'string', description: 'Optional bus route ID filter, e.g. "A11"' },
+      },
+      required: ['mode'],
+    },
+    handler: getBusScheduleAdherence,
   },
   {
     name: 'show_on_map',

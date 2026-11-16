@@ -6,6 +6,7 @@ import { registerServiceHistory } from './service_history.js';
 import { registerLiveTrains } from './live_trains.js';
 import { registerBusPositions } from './bus_positions.js';
 import { registerScheduleAdherence } from './schedule_adherence.js';
+import { registerBusScheduleAdherence } from './bus_schedule_adherence.js';
 
 export function registerAllTools(server: McpServer): void {
   registerNextArrivals(server);
@@ -15,4 +16,5 @@ export function registerAllTools(server: McpServer): void {
   registerLiveTrains(server);
   registerBusPositions(server);
   registerScheduleAdherence(server);
+  registerBusScheduleAdherence(server);
 }

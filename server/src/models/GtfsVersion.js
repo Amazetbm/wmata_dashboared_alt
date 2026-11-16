@@ -4,6 +4,7 @@ const gtfsVersionSchema = new mongoose.Schema({
   feedHash:  { type: String, required: true },
   feedDate:  { type: String, required: true }, // "YYYYMMDD" from feed_info.txt feed_start_date
   agencyTz:  { type: String, default: 'America/New_York' },
+  mode:      { type: String, enum: ['rail', 'bus'], default: 'rail', required: true },
   status:    { type: String, enum: ['loading', 'active', 'previous', 'stale'], default: 'loading' },
   loadedAt:  { type: Date, default: Date.now },
   previousSince: { type: Date, default: null },
@@ -25,5 +26,6 @@ const gtfsVersionSchema = new mongoose.Schema({
 
 gtfsVersionSchema.index({ status: 1 });
 gtfsVersionSchema.index({ feedHash: 1 });
+gtfsVersionSchema.index({ mode: 1, status: 1 });
 
 module.exports = mongoose.model('GtfsVersion', gtfsVersionSchema);

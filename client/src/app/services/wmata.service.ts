@@ -104,4 +104,21 @@ export class WmataService {
     const params = new HttpParams().set('at', at);
     return this.http.get(`${this.base}/adherence/schedule/snapshot`, { params });
   }
+
+  getLiveBusScheduleAdherence(route?: string): Observable<any> {
+    let params = new HttpParams();
+    if (route) params = params.set('route', route);
+    return this.http.get(`${this.base}/bus/adherence/schedule/live`, { params });
+  }
+
+  getHistoricalBusScheduleAdherence(from: string, to: string, route?: string): Observable<any> {
+    let params = new HttpParams().set('from', from).set('to', to);
+    if (route) params = params.set('route', route);
+    return this.http.get(`${this.base}/bus/adherence/schedule/history`, { params });
+  }
+
+  getBusScheduleAdherenceSnapshot(at: string): Observable<any> {
+    const params = new HttpParams().set('at', at);
+    return this.http.get(`${this.base}/bus/adherence/schedule/snapshot`, { params });
+  }
 }
