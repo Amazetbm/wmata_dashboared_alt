@@ -314,6 +314,19 @@ MCP_TRANSPORT=stdio node dist/index.js
 > (NO_DATA_AVAILABLE) for all vehicles. Bus crowding will show as `null` until WMATA populates
 > the field. Use `node server/scripts/probeOccupancy.js bus` to check current feed status.
 
+### GTFS Static Bus Schedule (optional)
+
+Loads the WMATA bus GTFS static timetable into MongoDB at startup and at 3:30 AM ET daily (staggered 30 minutes after the rail reload at 3:00 AM).
+
+| Variable | Description | Default |
+|---|---|---|
+| `GTFS_BUS_SCHEDULE` | Set to `true` to load the bus static timetable on startup | `false` |
+| `GTFS_BUS_SCHEDULE_FORCE_RELOAD` | Bypass hash check and reload even if the feed is unchanged | `false` |
+
+**Why timepoints only?** WMATA measures bus on-time performance at timepoints (scheduled timing points), not at every stop. The feed ships a pre-filtered `timepoint_times.txt` (~680 K rows) alongside the full `stop_times.txt` (~4.2 M rows). The loader uses `timepoint_times.txt` to keep MongoDB load time and collection size manageable.
+
+**Expected footprint:** ~350 MB additional MongoDB storage, ~45 s load time, ~300 MB peak RSS during ingest.
+
 ### GTFS-RT Trip Updates — Schedule Adherence (optional)
 
 Requires `GTFS_RAIL_SCHEDULE=true` (static timetable must be loaded first).

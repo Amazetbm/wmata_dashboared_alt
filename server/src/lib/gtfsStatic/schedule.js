@@ -10,11 +10,13 @@ const GtfsStopTime = require('../../models/GtfsStopTime');
 const { gtfsToUtc } = require('./timeUtils');
 
 /**
- * Get the ObjectId of the currently active GtfsVersion.
+ * Get the ObjectId of the currently active GtfsVersion for a given mode.
  * Returns null if no active version exists.
+ *
+ * @param {'rail'|'bus'} [mode='rail']
  */
-async function getActiveVersionId() {
-  const v = await GtfsVersion.findOne({ status: 'active' }).sort({ loadedAt: -1 }).lean();
+async function getActiveVersionId(mode = 'rail') {
+  const v = await GtfsVersion.findOne({ status: 'active', mode }).sort({ loadedAt: -1 }).lean();
   return v ? v._id : null;
 }
 
@@ -27,10 +29,11 @@ async function getActiveVersionId() {
  *
  * @param {string} localDateStr  "YYYY-MM-DD"
  * @param {mongoose.Types.ObjectId} [versionId]  defaults to active version
+ * @param {'rail'|'bus'} [mode='rail']
  * @returns {Promise<string[]>}
  */
-async function getActiveServiceIds(localDateStr, versionId) {
-  const vid = versionId || (await getActiveVersionId());
+async function getActiveServiceIds(localDateStr, versionId, mode = 'rail') {
+  const vid = versionId || (await getActiveVersionId(mode));
   if (!vid) return [];
 
   // Convert "YYYY-MM-DD" → "YYYYMMDD" for GTFS date field
@@ -59,10 +62,11 @@ async function getActiveServiceIds(localDateStr, versionId) {
  * @param {string} wmataCode   legacy station code, e.g. "A01"
  * @param {string} localDateStr  "YYYY-MM-DD"
  * @param {mongoose.Types.ObjectId} [versionId]
+ * @param {'rail'|'bus'} [mode='rail']
  * @returns {Promise<Array<{tripId,lineCode,routeId,headsign,direction,departureSec,departureTimeUtc}>>}
  */
-async function getScheduledDepartures(wmataCode, localDateStr, versionId) {
-  const vid = versionId || (await getActiveVersionId());
+async function getScheduledDepartures(wmataCode, localDateStr, versionId, mode = 'rail') {
+  const vid = versionId || (await getActiveVersionId(mode));
   if (!vid) return [];
 
   // Find all stops matching this wmataCode
@@ -130,10 +134,11 @@ async function getScheduledDepartures(wmataCode, localDateStr, versionId) {
  * @param {string} tripId
  * @param {string} localDateStr  "YYYY-MM-DD"
  * @param {mongoose.Types.ObjectId} [versionId]
+ * @param {'rail'|'bus'} [mode='rail']
  * @returns {Promise<Array<{stopId,stopSequence,arrivalSec,departureSec,departureTimeUtc}>>}
  */
-async function getTripSchedule(tripId, localDateStr, versionId) {
-  const vid = versionId || (await getActiveVersionId());
+async function getTripSchedule(tripId, localDateStr, versionId, mode = 'rail') {
+  const vid = versionId || (await getActiveVersionId(mode));
   if (!vid) return [];
 
   const stopTimes = await GtfsStopTime.find({ version: vid, tripId })
@@ -155,10 +160,11 @@ async function getTripSchedule(tripId, localDateStr, versionId) {
  * @param {string} lineCode  e.g. "RD"
  * @param {string} localDateStr  "YYYY-MM-DD"
  * @param {mongoose.Types.ObjectId} [versionId]
+ * @param {'rail'|'bus'} [mode='rail']
  * @returns {Promise<Array<{tripId,routeId,serviceId,directionId,tripHeadsign}>>}
  */
-async function getScheduledTripsInService(lineCode, localDateStr, versionId) {
-  const vid = versionId || (await getActiveVersionId());
+async function getScheduledTripsInService(lineCode, localDateStr, versionId, mode = 'rail') {
+  const vid = versionId || (await getActiveVersionId(mode));
   if (!vid) return [];
 
   const routes = await GtfsRoute.find({ version: vid, lineCode }).lean();

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const unzipper = require('unzipper');
 const { parse: csvParse } = require('csv-parse');
+const { DateTime } = require('luxon');
 const { parseGtfsTime } = require('./timeUtils');
 
 const GtfsVersion = require('../../models/GtfsVersion');
@@ -65,15 +66,22 @@ async function validateBeforeActivation(versionId, opts = {}) {
   if (mode === 'bus') {
     const minRoutes        = opts.minRoutes        ?? 100;
     const minStopTimeCount = opts.minStopTimeCount ?? 600_000;
-    const [routeCount, stopTimeCount, serviceIds] = await Promise.all([
+    const [routeCount, stopTimeCount, serviceIds, tripCount] = await Promise.all([
       GtfsRoute.countDocuments({ version: versionId }),
       GtfsStopTime.countDocuments({ version: versionId }),
       GtfsCalendarDate.distinct('serviceId', { version: versionId, exceptionType: 1 }),
+      GtfsTrip.countDocuments({ version: versionId }),
     ]);
     const errors = [];
     if (routeCount < minRoutes)             errors.push(`only ${routeCount} routes (threshold: ${minRoutes})`);
     if (stopTimeCount < minStopTimeCount)   errors.push(`only ${stopTimeCount} stop_times (threshold: ${minStopTimeCount})`);
     if (serviceIds.length === 0)            errors.push('no active service IDs');
+    if (tripCount === 0)                    errors.push('no trips');
+    if (opts.feedDate && opts.feedEndDate) {
+      const today = DateTime.now().setZone('America/New_York').toFormat('yyyyMMdd');
+      if (today < opts.feedDate)     errors.push(`feed starts in the future (feedDate=${opts.feedDate})`);
+      if (today > opts.feedEndDate)  errors.push(`feed has expired (feedEndDate=${opts.feedEndDate})`);
+    }
     if (errors.length) throw new Error(`[gtfs-static] Bus validation failed: ${errors.join(', ')}`);
     return;
   }
@@ -213,14 +221,17 @@ async function loadGtfsStatic(opts = {}) {
   }
 
   // --- Step 3: Insert new version doc ---
+  const loadStartMs = Date.now();
   const dir = await unzipper.Open.buffer(buf);
   const feedInfoFile = dir.files.find(f => f.path === 'feed_info.txt');
   let feedDate = '';
+  let feedEndDate = '';
   let feedVersionStr = '';
   let agencyTz = 'America/New_York';
   if (feedInfoFile) {
     const [info] = await parseFile(feedInfoFile);
     feedDate = info?.feed_start_date || '';
+    feedEndDate = info?.feed_end_date || '';
     feedVersionStr = info?.feed_version || '';
   }
   const agencyFile = dir.files.find(f => f.path === 'agency.txt');
@@ -250,14 +261,19 @@ async function loadGtfsStatic(opts = {}) {
     // --- Step 5: Validate and compute meta (before activation) ---
     await validateBeforeActivation(versionId, {
       mode,
-      minStations:     opts.minStations,
-      minRoutes:       opts.minRoutes,
+      minStations:      opts.minStations,
+      minRoutes:        opts.minRoutes,
       minStopTimeCount: opts.minStopTimeCount,
+      feedDate,
+      feedEndDate,
     });
     await computeAndStoreMeta(versionId, feedVersionStr, mode);
 
     // --- Step 6: Activate new version ---
     await GtfsVersion.updateOne({ _id: versionId }, { $set: { status: 'active' } });
+    const durationSec = Math.round((Date.now() - loadStartMs) / 1000);
+    const peakRssMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    console.log(`[gtfs-static] ${mode} load complete in ${durationSec}s, peak RSS ${peakRssMB} MB`);
     console.log(`[gtfs-static] ${mode} version ${versionId} is now active`);
 
     // --- Step 6b: Demote old active version to 'previous' (keep data for in-flight RT trips) ---

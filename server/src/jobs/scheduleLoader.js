@@ -24,6 +24,17 @@ async function init(mode = 'rail') {
     return;
   }
 
+  // Migrate existing docs that pre-date the mode field (rail only — bus never had undifferentiated docs)
+  if (mode === 'rail') {
+    const migrated = await GtfsVersion.updateMany(
+      { mode: { $exists: false } },
+      { $set: { mode: 'rail' } }
+    );
+    if (migrated.modifiedCount > 0) {
+      console.log(`[scheduleLoader] Migrated ${migrated.modifiedCount} GtfsVersion doc(s) to mode=rail`);
+    }
+  }
+
   const active = await GtfsVersion.findOne({ status: 'active', mode }).sort({ loadedAt: -1 });
 
   // Prune expired previous versions (mode-scoped)

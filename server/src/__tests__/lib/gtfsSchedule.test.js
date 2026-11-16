@@ -12,6 +12,7 @@ const GtfsTrip = require('../../models/GtfsTrip');
 const GtfsStopTime = require('../../models/GtfsStopTime');
 const { loadGtfsStatic } = require('../../lib/gtfsStatic/loader');
 const {
+  getActiveVersionId,
   getActiveServiceIds,
   getScheduledDepartures,
   getTripSchedule,
@@ -208,5 +209,42 @@ describe('getScheduledTripsInService', () => {
   it('returns empty array for unknown line code', async () => {
     const trips = await getScheduledTripsInService('XX', '2026-10-28', versionId);
     expect(trips).toEqual([]);
+  });
+});
+
+// --- getActiveVersionId mode isolation ---
+
+describe('getActiveVersionId mode isolation', () => {
+  let busVersionId;
+
+  beforeAll(async () => {
+    // versionId (rail, status=active) already loaded by the outer beforeAll
+    const busV = await GtfsVersion.create({
+      feedHash: 'bus-mode-isolation-hash',
+      feedDate: '20261101',
+      mode: 'bus',
+      status: 'active',
+      loadedAt: new Date(),
+    });
+    busVersionId = busV._id;
+  });
+
+  afterAll(async () => {
+    await GtfsVersion.deleteOne({ _id: busVersionId });
+  });
+
+  it('getActiveVersionId("rail") returns the rail version when both modes are active', async () => {
+    const id = await getActiveVersionId('rail');
+    expect(id.toString()).toBe(versionId.toString());
+  });
+
+  it('getActiveVersionId("bus") returns the bus version', async () => {
+    const id = await getActiveVersionId('bus');
+    expect(id.toString()).toBe(busVersionId.toString());
+  });
+
+  it('getActiveVersionId() defaults to rail', async () => {
+    const id = await getActiveVersionId();
+    expect(id.toString()).toBe(versionId.toString());
   });
 });

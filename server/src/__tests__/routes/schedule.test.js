@@ -293,3 +293,70 @@ describe('validation gate', () => {
     process.env.GTFS_RAIL_SCHEDULE = 'true';
   });
 });
+
+// ---- Tests: bus object in /api/schedule/status ----
+
+describe('bus object in GET /api/schedule/status', () => {
+  let busVersionId;
+
+  beforeAll(async () => {
+    process.env.GTFS_RAIL_SCHEDULE = 'true';
+    process.env.GTFS_BUS_SCHEDULE = 'true';
+    // Create a bus active version with meta
+    const busV = await GtfsVersion.create({
+      feedHash: 'bus-status-route-test-hash',
+      feedDate: '20260913',
+      mode: 'bus',
+      status: 'active',
+      loadedAt: new Date(),
+      meta: {
+        computedAt: new Date(),
+        feedVersion: 'S1000251',
+        routeCount: 126,
+        stopTimeCount: 680469,
+        serviceIdCount: 10,
+        stationsMappedCount: 0,
+        serviceDateRange: { start: '20260913', end: '20270327' },
+      },
+    });
+    busVersionId = busV._id;
+  });
+
+  afterAll(async () => {
+    await GtfsVersion.deleteOne({ _id: busVersionId });
+    delete process.env.GTFS_BUS_SCHEDULE;
+  });
+
+  it('status includes bus object with enabled=true and loaded=true', async () => {
+    const res = await request(app).get('/api/schedule/status');
+    expect(res.status).toBe(200);
+    expect(res.body.bus).toBeDefined();
+    expect(res.body.bus.enabled).toBe(true);
+    expect(res.body.bus.loaded).toBe(true);
+    expect(res.body.bus.feedDate).toBe('2026-09-13');
+    expect(typeof res.body.bus.tripCount).toBe('number');
+    expect(res.body.bus.timepointStopTimeCount).toBe(680469);
+    expect(res.body.bus.routeCount).toBe(126);
+    expect(res.body.bus.serviceDateRange).toEqual({
+      start: '2026-09-13',
+      end: '2027-03-27',
+    });
+  });
+
+  it('top-level rail routeCount reflects only the rail version', async () => {
+    const res = await request(app).get('/api/schedule/status');
+    expect(res.status).toBe(200);
+    // The rail fixture has 2 routes; bus meta has 126 — rail routeCount must be 2
+    expect(res.body.routeCount).toBe(2);
+    expect(res.body.enabled).toBe(true);
+  });
+
+  it('bus.enabled=false when GTFS_BUS_SCHEDULE is unset/false', async () => {
+    process.env.GTFS_BUS_SCHEDULE = 'false';
+    const res = await request(app).get('/api/schedule/status');
+    expect(res.status).toBe(200);
+    expect(res.body.bus).toBeDefined();
+    expect(res.body.bus.enabled).toBe(false);
+    process.env.GTFS_BUS_SCHEDULE = 'true';
+  });
+});

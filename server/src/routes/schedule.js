@@ -16,10 +16,16 @@ const { loadGtfsStatic } = require('../lib/gtfsStatic/loader');
 
 const DISABLED_RESP = { error: 'Schedule feature disabled' };
 
-const isEnabled = () => process.env.GTFS_RAIL_SCHEDULE === 'true';
+const isEnabled    = () => process.env.GTFS_RAIL_SCHEDULE === 'true';
+const isBusEnabled = () => process.env.GTFS_BUS_SCHEDULE  === 'true';
 
 function todayEastern() {
   return DateTime.now().setZone('America/New_York').toFormat('yyyy-MM-dd');
+}
+
+function isoDate(yyyymmdd) {
+  if (!yyyymmdd) return null;
+  return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 }
 
 /**
@@ -30,9 +36,12 @@ router.get('/status', async (req, res) => {
   if (!isEnabled()) return res.status(503).json(DISABLED_RESP);
 
   try {
-    const [version, prevVersion] = await Promise.all([
-      GtfsVersion.findOne({ status: 'active' }).sort({ loadedAt: -1 }).lean(),
-      GtfsVersion.findOne({ status: 'previous' }, { feedDate: 1, loadedAt: 1, previousSince: 1 }).lean(),
+    const [version, prevVersion, busVersion] = await Promise.all([
+      GtfsVersion.findOne({ status: 'active', mode: 'rail' }).sort({ loadedAt: -1 }).lean(),
+      GtfsVersion.findOne({ status: 'previous', mode: 'rail' }, { feedDate: 1, loadedAt: 1, previousSince: 1 }).lean(),
+      isBusEnabled()
+        ? GtfsVersion.findOne({ status: 'active', mode: 'bus' }).sort({ loadedAt: -1 }).lean()
+        : Promise.resolve(null),
     ]);
     if (!version) {
       return res.json({ enabled: true, loaded: false });
@@ -49,9 +58,33 @@ router.get('/status', async (req, res) => {
     const mappedCount = version.meta?.stationsMappedCount ?? 0;
     const stationsMapped = { mapped: mappedCount, total: mappedCount };
 
-    function isoDate(yyyymmdd) {
-      if (!yyyymmdd) return null;
-      return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+    // Build bus status object
+    let busObj;
+    if (!isBusEnabled()) {
+      busObj = { enabled: false };
+    } else if (!busVersion) {
+      busObj = { enabled: true, loaded: false };
+    } else {
+      const [busTripCount, busServiceResult] = await Promise.all([
+        GtfsTrip.countDocuments({ version: busVersion._id }),
+        getActiveServiceIds(todayEastern(), busVersion._id).then(ids => ({ ok: true, value: ids })).catch(() => ({ ok: false })),
+      ]);
+      const busMetaReady = !!busVersion.meta?.computedAt;
+      busObj = {
+        enabled: true,
+        loaded: true,
+        feedVersion: busMetaReady ? (busVersion.meta.feedVersion || null) : null,
+        feedDate: isoDate(busVersion.feedDate),
+        loadedAt: busVersion.loadedAt,
+        routeCount: busMetaReady ? busVersion.meta.routeCount : null,
+        tripCount: busTripCount,
+        timepointStopTimeCount: busMetaReady ? busVersion.meta.stopTimeCount : null,
+        serviceDateRange: busMetaReady ? {
+          start: isoDate(busVersion.meta.serviceDateRange?.start),
+          end:   isoDate(busVersion.meta.serviceDateRange?.end),
+        } : null,
+        coversToday: busServiceResult.ok ? busServiceResult.value.length > 0 : false,
+      };
     }
 
     return res.json({
@@ -75,6 +108,7 @@ router.get('/status', async (req, res) => {
       previousVersion: prevVersion
         ? { feedDate: prevVersion.feedDate, loadedAt: prevVersion.loadedAt, previousSince: prevVersion.previousSince }
         : null,
+      bus: busObj,
     });
   } catch (err) {
     console.error('[schedule/status]', err.message);
