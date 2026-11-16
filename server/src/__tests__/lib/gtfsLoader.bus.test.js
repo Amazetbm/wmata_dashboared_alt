@@ -187,6 +187,43 @@ describe('loadGtfsStatic (bus mode)', () => {
       .rejects.toThrow('Bus validation failed');
   });
 
+  it('bus validation fails when trip count is 0', async () => {
+    const emptyTrips = 'route_id,service_id,trip_id,trip_headsign,direction_id\n'; // header only
+    const zip = new AdmZip();
+    zip.addFile('feed_info.txt', Buffer.from(FEED_INFO));
+    zip.addFile('agency.txt',    Buffer.from(AGENCY));
+    zip.addFile('routes.txt',    Buffer.from(BUS_ROUTES));
+    zip.addFile('stops.txt',     Buffer.from(BUS_STOPS));
+    zip.addFile('calendar_dates.txt', Buffer.from(BUS_CALENDAR_DATES));
+    zip.addFile('trips.txt',     Buffer.from(emptyTrips));
+    zip.addFile('timepoint_times.txt', Buffer.from(buildStopTimes('timepoint_times')));
+    zip.addFile('_marker.txt',   Buffer.from('zero-trips'));
+
+    await expect(loadGtfsStatic({ mode: 'bus', minRoutes: 2, minStopTimeCount: 5, zipBuffer: zip.toBuffer() }))
+      .rejects.toThrow(/Bus validation failed.*no trips/);
+
+    const v = await GtfsVersion.findOne({ mode: 'bus' });
+    expect(v?.status).toBe('loading');
+  });
+
+  it('bus validation fails when today is outside the feed date range', async () => {
+    // Use a feed that expired in the past (before 2026-11-16)
+    const pastFeedInfo = `feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date
+WMATA,http://www.wmata.com,en,20260101,20260630
+`;
+    const zip = new AdmZip();
+    zip.addFile('feed_info.txt', Buffer.from(pastFeedInfo));
+    zip.addFile('agency.txt',    Buffer.from(AGENCY));
+    zip.addFile('routes.txt',    Buffer.from(BUS_ROUTES));
+    zip.addFile('stops.txt',     Buffer.from(BUS_STOPS));
+    zip.addFile('calendar_dates.txt', Buffer.from(BUS_CALENDAR_DATES));
+    zip.addFile('trips.txt',     Buffer.from(BUS_TRIPS));
+    zip.addFile('timepoint_times.txt', Buffer.from(buildStopTimes('timepoint_times')));
+
+    await expect(loadGtfsStatic({ mode: 'bus', minRoutes: 2, minStopTimeCount: 5, zipBuffer: zip.toBuffer() }))
+      .rejects.toThrow(/Bus validation failed.*feed has expired/);
+  });
+
   it('cleanupPreviousVersions scopes to bus mode only', async () => {
     // Create a stale bus previous version
     const v = await GtfsVersion.create({

@@ -72,4 +72,26 @@ describe('scheduleLoader init()', () => {
     await init();
     expect(cleanupPreviousVersions).toHaveBeenCalled();
   });
+
+  it('migrates existing docs without mode field to mode=rail on init(rail)', async () => {
+    // Insert directly via collection to bypass Mongoose schema defaults (simulates old doc)
+    const col = mongoose.connection.collection('gtfsversions');
+    const { insertedId } = await col.insertOne({
+      feedHash: 'no-mode-legacy-hash',
+      feedDate: '20261001',
+      status: 'active',
+      loadedAt: new Date(),
+      // intentionally no mode field
+    });
+
+    // Verify the doc has no mode
+    const before = await col.findOne({ _id: insertedId });
+    expect(before.mode).toBeUndefined();
+
+    await init('rail');
+    await new Promise(r => setImmediate(r));
+
+    const after = await col.findOne({ _id: insertedId });
+    expect(after.mode).toBe('rail');
+  });
 });
