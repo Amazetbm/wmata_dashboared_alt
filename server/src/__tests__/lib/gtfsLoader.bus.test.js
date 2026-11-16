@@ -224,6 +224,36 @@ WMATA,http://www.wmata.com,en,20260101,20260630
       .rejects.toThrow(/Bus validation failed.*feed has expired/);
   });
 
+  it('filters stop_times.txt to timepoint=1 rows when timepoint_times.txt is absent', async () => {
+    // 6 rows total: 3 with timepoint=1, 3 with timepoint=0
+    const mixedStopTimes = [
+      'trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint',
+      'trip_A11_1,08:01:00,08:01:00,1001,1,1',
+      'trip_A11_1,08:02:00,08:02:00,1001,2,0',
+      'trip_A11_1,08:03:00,08:03:00,1001,3,1',
+      'trip_A11_1,08:04:00,08:04:00,1001,4,0',
+      'trip_A11_1,08:05:00,08:05:00,1001,5,1',
+      'trip_A11_1,08:06:00,08:06:00,1001,6,0',
+    ].join('\n') + '\n';
+
+    const zip = new AdmZip();
+    zip.addFile('feed_info.txt', Buffer.from(FEED_INFO));
+    zip.addFile('agency.txt',    Buffer.from(AGENCY));
+    zip.addFile('routes.txt',    Buffer.from(BUS_ROUTES));
+    zip.addFile('stops.txt',     Buffer.from(BUS_STOPS));
+    zip.addFile('calendar_dates.txt', Buffer.from(BUS_CALENDAR_DATES));
+    zip.addFile('trips.txt',     Buffer.from(BUS_TRIPS));
+    zip.addFile('stop_times.txt', Buffer.from(mixedStopTimes));
+    zip.addFile('_fallback.txt', Buffer.from('no-timepoint-times-marker'));
+    // timepoint_times.txt intentionally absent
+
+    await load({ mode: 'bus', zipBuffer: zip.toBuffer(), minStopTimeCount: 2 });
+
+    const version = await GtfsVersion.findOne({ status: 'active', mode: 'bus' });
+    const count = await GtfsStopTime.countDocuments({ version: version._id });
+    expect(count).toBe(3); // only the timepoint=1 rows
+  });
+
   it('cleanupPreviousVersions scopes to bus mode only', async () => {
     // Create a stale bus previous version
     const v = await GtfsVersion.create({
