@@ -12,25 +12,34 @@ const RailOccupancy = require('../models/RailOccupancy');
 const BusOccupancy = require('../models/BusOccupancy');
 const TripUpdate = require('../models/TripUpdate');
 const ScheduleAdherenceSnapshot = require('../models/ScheduleAdherenceSnapshot');
+const BusScheduleAdherenceSnapshot = require('../models/BusScheduleAdherenceSnapshot');
 const GtfsVersion = require('../models/GtfsVersion');
 const GtfsStopTime = require('../models/GtfsStopTime');
 const railGeometry = require('../lib/railGeometry');
 const { decodeVehiclePositions } = require('../lib/gtfsRt');
-const { decodeTripUpdates } = require('../lib/gtfsRt/tripUpdateDecoder');
+const { decodeTripUpdates, decodeBusTripUpdates } = require('../lib/gtfsRt/tripUpdateDecoder');
 const { classifyDelay, classifyScheduleDelay3 } = require('../lib/tripUpdateEnricher');
 const { parseGtfsTime, gtfsToUtc } = require('../lib/gtfsStatic/timeUtils');
 
 const GTFS_RAIL_ENABLED = process.env.GTFS_RAIL_OCCUPANCY === 'true';
 const GTFS_BUS_ENABLED  = process.env.GTFS_BUS_OCCUPANCY  === 'true';
 const GTFS_TRIP_UPDATES_ENABLED = process.env.GTFS_RAIL_TRIP_UPDATES === 'true';
+const GTFS_BUS_TRIP_UPDATES_ENABLED = process.env.GTFS_BUS_TRIP_UPDATES === 'true';
 // Keep old name for any internal references below
 const GTFS_ENABLED = GTFS_RAIL_ENABLED;
 const POLLER_ENABLED = process.env.POLLER_ENABLED !== 'false';
 
+// Bus schedule adherence thresholds (WMATA official: 2 min early to 7 min late)
+const BUS_SCHEDULE_EARLY_SEC  = parseInt(process.env.BUS_SCHEDULE_EARLY_SEC  ?? '120', 10);
+const BUS_SCHEDULE_ONTIME_SEC = parseInt(process.env.BUS_SCHEDULE_ONTIME_SEC ?? '420', 10);
+const BUS_SCHEDULE_MINOR_SEC  = parseInt(process.env.BUS_SCHEDULE_MINOR_SEC  ?? '900', 10);
+
 // Startup log
 [
   'GTFS_RAIL_OCCUPANCY', 'GTFS_BUS_OCCUPANCY', 'GTFS_RAIL_SCHEDULE', 'GTFS_RAIL_TRIP_UPDATES',
+  'GTFS_BUS_SCHEDULE', 'GTFS_BUS_TRIP_UPDATES',
   'SCHEDULE_EARLY_SEC', 'SCHEDULE_ONTIME_SEC', 'SCHEDULE_MINOR_SEC',
+  'BUS_SCHEDULE_EARLY_SEC', 'BUS_SCHEDULE_ONTIME_SEC', 'BUS_SCHEDULE_MINOR_SEC',
 ].forEach(k => console.log(`[poller] ${k}=${process.env[k] ?? '(unset)'}`));
 console.log(`[poller] POLLER_ENABLED=${POLLER_ENABLED}`);
 if (GTFS_TRIP_UPDATES_ENABLED) {
@@ -255,6 +264,170 @@ async function lookupScheduledTimes(matchableTrips, versions) {
   return { schedMap, matchedActive, matchedPrevious };
 }
 
+/**
+ * Classify a bus schedule delay in seconds using WMATA's official definition:
+ * early = more than BUS_SCHEDULE_EARLY_SEC seconds early (negative)
+ * onTime = between -BUS_SCHEDULE_EARLY_SEC and +BUS_SCHEDULE_ONTIME_SEC
+ * minor = BUS_SCHEDULE_ONTIME_SEC to BUS_SCHEDULE_MINOR_SEC late
+ * significant = > BUS_SCHEDULE_MINOR_SEC late
+ */
+function classifyBusDelay(delaySec) {
+  if (delaySec <= -BUS_SCHEDULE_EARLY_SEC)  return 'early';
+  if (delaySec <= BUS_SCHEDULE_ONTIME_SEC)  return 'onTime';
+  if (delaySec <= BUS_SCHEDULE_MINOR_SEC)   return 'minor';
+  return 'significant';
+}
+
+/**
+ * Batch-query scheduled stop times for matchable bus trips across active and previous versions.
+ * For each trip, iterates refCandidates in order and picks the first candidate that
+ * matches a GtfsStopTime row. Mutates trip to set refStopSequence and refActualTimeSec.
+ *
+ * @param {object[]} matchableTrips  - bus trips with { tripId, refCandidates: [{stopSequence, actualTimeSec}] }
+ * @param {object[]} versions        - [{_id, status, feedDate}] (active + previous)
+ * @returns {Promise<{ schedMap: Map, matchedActive: number, matchedPrevious: number }>}
+ */
+async function lookupBusScheduledTimes(matchableTrips, versions) {
+  if (!matchableTrips.length || !versions.length) {
+    return { schedMap: new Map(), matchedActive: 0, matchedPrevious: 0 };
+  }
+
+  const versionIds = versions.map(v => v._id);
+
+  // Build $or from all candidate {tripId, stopSequence} pairs across all trips
+  const allPairs = [];
+  for (const trip of matchableTrips) {
+    for (const cand of trip.refCandidates) {
+      allPairs.push({ tripId: trip.tripId, stopSequence: cand.stopSequence });
+    }
+  }
+
+  if (!allPairs.length) {
+    return { schedMap: new Map(), matchedActive: 0, matchedPrevious: 0 };
+  }
+
+  const staticRows = await GtfsStopTime.find({
+    version: { $in: versionIds },
+    $or: allPairs,
+  }).lean();
+
+  // Build a versionId → status lookup for O(1) access
+  const versionStatus = {};
+  for (const v of versions) versionStatus[v._id.toString()] = v.status;
+
+  const schedMap = new Map();
+  // Previous rows first; active overrides
+  for (const r of staticRows) {
+    if (versionStatus[r.version.toString()] === 'previous') {
+      schedMap.set(`${r.tripId}:${r.stopSequence}`, { row: r, source: 'previous' });
+    }
+  }
+  for (const r of staticRows) {
+    if (versionStatus[r.version.toString()] === 'active') {
+      schedMap.set(`${r.tripId}:${r.stopSequence}`, { row: r, source: 'active' });
+    }
+  }
+
+  // For each trip, iterate refCandidates in order; first candidate that matches wins
+  let matchedActive = 0;
+  let matchedPrevious = 0;
+
+  for (const trip of matchableTrips) {
+    for (const cand of trip.refCandidates) {
+      const entry = schedMap.get(`${trip.tripId}:${cand.stopSequence}`);
+      if (entry) {
+        // Mutate trip with the winning candidate
+        trip.refStopSequence  = cand.stopSequence;
+        trip.refActualTimeSec = cand.actualTimeSec;
+        if (entry.source === 'active')   matchedActive++;
+        else                             matchedPrevious++;
+        break;
+      }
+    }
+  }
+
+  return { schedMap, matchedActive, matchedPrevious };
+}
+
+/**
+ * Compute a bus schedule adherence snapshot from enriched bus trip objects.
+ * Groups by routeId → routeSummaries. Uses bus-specific delay thresholds.
+ *
+ * @param {object[]} rawTrips    - decoded bus trips with delaySeconds/delayLabel/scheduleRelationship
+ * @param {boolean}  degraded
+ * @param {number}   coverageRate
+ * @returns {object}  Payload for BusScheduleAdherenceSnapshot.create (minus snapshotAt/feedTimestamp)
+ */
+function computeBusScheduleAdherence(rawTrips, degraded, coverageRate) {
+  const summary = {
+    total: 0, early: 0, onTime: 0, minor: 0, significant: 0,
+    noPrediction: 0, canceled: 0, unscheduled: 0, added: 0,
+  };
+  const byRoute = {};
+  const busRecords = [];
+
+  function ensureRoute(routeId) {
+    if (!byRoute[routeId]) {
+      byRoute[routeId] = {
+        routeId,
+        total: 0, early: 0, onTime: 0, minor: 0, significant: 0,
+        noPrediction: 0, canceled: 0, unscheduled: 0, added: 0,
+      };
+    }
+    return byRoute[routeId];
+  }
+
+  for (const trip of rawTrips) {
+    const sr = trip.scheduleRelationship ?? 0;
+    const routeId = trip.routeId;
+
+    if (sr === 3) {
+      summary.canceled++;
+      if (routeId) ensureRoute(routeId).canceled++;
+    } else if (sr === 2) {
+      summary.unscheduled++;
+      if (routeId) ensureRoute(routeId).unscheduled++;
+    } else if (sr === 1) {
+      summary.added++;
+      if (routeId) ensureRoute(routeId).added++;
+    } else {
+      // SCHEDULED
+      summary.total++;
+      if (routeId) ensureRoute(routeId).total++;
+
+      if (trip.delaySeconds != null) {
+        const bucket = classifyBusDelay(trip.delaySeconds);
+        summary[bucket]++;
+        if (routeId) ensureRoute(routeId)[bucket]++;
+      } else {
+        summary.noPrediction++;
+        if (routeId) ensureRoute(routeId).noPrediction++;
+      }
+
+      if (trip.vehicleId) {
+        busRecords.push({
+          vehicleId:    trip.vehicleId,
+          routeId:      trip.routeId ?? null,
+          tripId:       trip.tripId ?? null,
+          delaySeconds: trip.delaySeconds ?? null,
+          delayLabel:   trip.delayLabel ?? null,
+        });
+      }
+    }
+  }
+
+  const withDelay = busRecords.filter(b => b.delaySeconds !== null).length;
+  console.log(`[poller] Bus schedule adherence: ${summary.total} scheduled, ${withDelay} with delay, canceled=${summary.canceled}, degraded=${degraded}`);
+
+  return {
+    summary,
+    routeSummaries: Object.values(byRoute),
+    buses: busRecords,
+    coverageRate,
+    degraded,
+  };
+}
+
 async function fetchAndStore() {
   const snapshotAt = new Date();
 
@@ -272,13 +445,15 @@ async function fetchAndStore() {
     if (GTFS_RAIL_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-vehiclepositions.pb', { responseType: 'arraybuffer' }));
     if (GTFS_BUS_ENABLED)  feeds.push(wmataClient.get('/gtfs/bus-gtfsrt-vehiclepositions.pb',  { responseType: 'arraybuffer' }));
     if (GTFS_TRIP_UPDATES_ENABLED) feeds.push(wmataClient.get('/gtfs/rail-gtfsrt-tripupdates.pb', { responseType: 'arraybuffer' }));
+    if (GTFS_BUS_TRIP_UPDATES_ENABLED) feeds.push(wmataClient.get('/gtfs/bus-gtfsrt-tripupdates.pb', { responseType: 'arraybuffer' }));
 
     const results = await Promise.allSettled(feeds);
     const [incRes, trainRes, elevRes, busPositionsRes, busIncidentsRes] = results;
     let idx = 5;
     const gtfsRailRes        = GTFS_RAIL_ENABLED          ? results[idx++] : undefined;
     const gtfsBusRes         = GTFS_BUS_ENABLED           ? results[idx++] : undefined;
-    const gtfsTripUpdatesRes = GTFS_TRIP_UPDATES_ENABLED  ? results[idx++] : undefined;
+    const gtfsTripUpdatesRes    = GTFS_TRIP_UPDATES_ENABLED     ? results[idx++] : undefined;
+    const gtfsBusTripUpdatesRes = GTFS_BUS_TRIP_UPDATES_ENABLED ? results[idx++] : undefined;
     // Legacy alias for the rail block below
     const gtfsRes = gtfsRailRes;
 
@@ -482,6 +657,83 @@ async function fetchAndStore() {
       console.error('[poller] GTFS-RT trip updates fetch error:', gtfsTripUpdatesRes.reason?.message);
     }
 
+    // Bus schedule adherence (GTFS-RT trip updates)
+    if (GTFS_BUS_TRIP_UPDATES_ENABLED && gtfsBusTripUpdatesRes?.status === 'fulfilled') {
+      try {
+        const { feedTimestamp: busTuFeedTs, feedTimestampSec: busFeedTsSec, trips: busRawTrips } =
+          decodeBusTripUpdates(gtfsBusTripUpdatesRes.value.data);
+
+        const busVersions = await GtfsVersion.find(
+          { status: { $in: ['active', 'previous'] }, mode: 'bus' },
+          { _id: 1, status: 1, feedDate: 1 },
+        ).lean();
+
+        const busMatchableTrips = busRawTrips.filter(t =>
+          t.scheduleRelationship == null || t.scheduleRelationship === 0
+        ).filter(t => t.refCandidates && t.refCandidates.length > 0);
+
+        if (busVersions.length && busMatchableTrips.length) {
+          const { schedMap: busSchedMap, matchedActive: busMatchedActive, matchedPrevious: busMatchedPrevious } =
+            await lookupBusScheduledTimes(busMatchableTrips, busVersions);
+
+          const busMatchCount = busMatchableTrips.filter(t =>
+            t.refStopSequence != null
+          ).length;
+          const totalMatchable = busMatchableTrips.length;
+          const busMatchRate = totalMatchable > 0 ? busMatchCount / totalMatchable : 0;
+          const busDegraded = busMatchRate < 0.80;
+
+          if (busDegraded && totalMatchable > 0) {
+            console.warn(`[poller] Bus TripUpdate degraded: match rate ${(busMatchRate * 100).toFixed(1)}%`);
+          }
+
+          if (busMatchedPrevious > 0) {
+            const prevVer = busVersions.find(v => v.status === 'previous');
+            if (prevVer) {
+              await GtfsVersion.updateOne({ _id: prevVer._id }, { $set: { lastMatchAt: new Date() } });
+            }
+          }
+
+          // Compute delay for each matched bus trip
+          for (const trip of busRawTrips) {
+            if (trip.refStopSequence == null) continue;
+            const entry = busSchedMap.get(`${trip.tripId}:${trip.refStopSequence}`);
+            if (!entry) continue;
+            const row = entry.row;
+
+            const dateStr = trip.startDate
+              ? `${trip.startDate.slice(0, 4)}-${trip.startDate.slice(4, 6)}-${trip.startDate.slice(6, 8)}`
+              : new Date(busTuFeedTs).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+            const scheduledSec = row.arrivalSec ?? row.departureSec;
+            const scheduledTimeSec = Math.floor(
+              gtfsToUtc(dateStr, scheduledSec).getTime() / 1000
+            );
+            trip.delaySeconds = trip.refActualTimeSec - scheduledTimeSec;
+            trip.delayLabel   = classifyBusDelay(trip.delaySeconds);
+          }
+
+          try {
+            const busSas = computeBusScheduleAdherence(busRawTrips, busDegraded, busMatchRate);
+            await BusScheduleAdherenceSnapshot.create({
+              snapshotAt, feedTimestamp: busTuFeedTs, ...busSas,
+              matchedActive: busMatchedActive, matchedPrevious: busMatchedPrevious,
+            });
+          } catch (err) {
+            console.error('[poller] BusScheduleAdherence computation error:', err.message);
+          }
+        } else {
+          if (!busVersions.length) {
+            console.warn('[poller] No active bus GTFS static version — skipping bus delay computation');
+          }
+        }
+      } catch (err) {
+        console.error('[poller] GTFS-RT bus trip updates error:', err.message);
+      }
+    } else if (GTFS_BUS_TRIP_UPDATES_ENABLED && gtfsBusTripUpdatesRes) {
+      console.error('[poller] GTFS-RT bus trip updates fetch error:', gtfsBusTripUpdatesRes.reason?.message);
+    }
+
     // Compute and persist headway adherence if we have train positions
     if (trainPositions.length) {
       try {
@@ -510,4 +762,4 @@ function startPolling() {
   wmataUsage.scheduleHourlyLog();
 }
 
-module.exports = { startPolling, fetchAndStore, computeScheduleAdherence, lookupScheduledTimes };
+module.exports = { startPolling, fetchAndStore, computeScheduleAdherence, lookupScheduledTimes, computeBusScheduleAdherence, lookupBusScheduledTimes, classifyBusDelay };

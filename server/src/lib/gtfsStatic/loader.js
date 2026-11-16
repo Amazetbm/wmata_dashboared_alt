@@ -13,10 +13,13 @@ const GtfsCalendarDate = require('../../models/GtfsCalendarDate');
 const GtfsTrip = require('../../models/GtfsTrip');
 const GtfsStopTime = require('../../models/GtfsStopTime');
 
-const WMATA_GTFS_URL = 'https://api.wmata.com/gtfs/rail-gtfs-static.zip';
+const FEED_URLS = {
+  rail: 'https://api.wmata.com/gtfs/rail-gtfs-static.zip',
+  bus:  'https://api.wmata.com/gtfs/bus-gtfs-static.zip',
+};
 const BATCH_SIZE = 500;
 
-// Maps GTFS full route names → 2-letter WMATA line codes
+// Maps GTFS full route names → 2-letter WMATA line codes (rail only)
 const ROUTE_TO_LINE = {
   RED:    'RD',
   BLUE:   'BL',
@@ -51,9 +54,31 @@ function deriveWmataCode(stopId) {
  *
  * @param {mongoose.Types.ObjectId} versionId
  * @param {object} [opts]
- * @param {number} [opts.minStations=95]  minimum number of distinct station codes required
+ * @param {string} [opts.mode]            'rail' or 'bus'
+ * @param {number} [opts.minStations=95]  minimum number of distinct station codes required (rail only)
+ * @param {number} [opts.minRoutes=100]   minimum bus routes (bus only); default 100
+ * @param {number} [opts.minStopTimeCount=600000]  minimum bus stop_times (bus only); default 600000
  */
 async function validateBeforeActivation(versionId, opts = {}) {
+  const mode = opts.mode || 'rail';
+
+  if (mode === 'bus') {
+    const minRoutes        = opts.minRoutes        ?? 100;
+    const minStopTimeCount = opts.minStopTimeCount ?? 600_000;
+    const [routeCount, stopTimeCount, serviceIds] = await Promise.all([
+      GtfsRoute.countDocuments({ version: versionId }),
+      GtfsStopTime.countDocuments({ version: versionId }),
+      GtfsCalendarDate.distinct('serviceId', { version: versionId, exceptionType: 1 }),
+    ]);
+    const errors = [];
+    if (routeCount < minRoutes)             errors.push(`only ${routeCount} routes (threshold: ${minRoutes})`);
+    if (stopTimeCount < minStopTimeCount)   errors.push(`only ${stopTimeCount} stop_times (threshold: ${minStopTimeCount})`);
+    if (serviceIds.length === 0)            errors.push('no active service IDs');
+    if (errors.length) throw new Error(`[gtfs-static] Bus validation failed: ${errors.join(', ')}`);
+    return;
+  }
+
+  // Rail validation
   const minStations = opts.minStations ?? 95;
   const [routeCount, stopTimeCount, serviceIds, stationCodes] = await Promise.all([
     GtfsRoute.countDocuments({ version: versionId }),
@@ -94,13 +119,15 @@ function parseFile(fileEntry) {
 }
 
 /**
- * Delete previous-status versions that are no longer needed:
+ * Delete previous-status versions that are no longer needed (scoped by mode):
  *   - Any version older than 36 hours
  *   - Any version older than 1 hour that has never matched a live trip (lastMatchAt === null)
  *   - Surplus versions beyond the newest one (keeps at most 1 previous)
+ *
+ * @param {string} [mode='rail']
  */
-async function cleanupPreviousVersions() {
-  const prevVersions = await GtfsVersion.find({ status: 'previous' }).sort({ previousSince: -1 });
+async function cleanupPreviousVersions(mode = 'rail') {
+  const prevVersions = await GtfsVersion.find({ status: 'previous', mode }).sort({ previousSince: -1 });
   if (!prevVersions.length) return;
 
   const now = Date.now();
@@ -110,7 +137,7 @@ async function cleanupPreviousVersions() {
   // Keep at most 1 previous version (newest by previousSince); delete extras first
   for (let i = 1; i < prevVersions.length; i++) {
     const v = prevVersions[i];
-    console.log(`[gtfs-static] Cleaning up surplus previous version ${v._id}`);
+    console.log(`[gtfs-static] Cleaning up surplus previous ${mode} version ${v._id}`);
     await deleteVersionData(v._id);
     await GtfsVersion.deleteOne({ _id: v._id });
   }
@@ -121,38 +148,41 @@ async function cleanupPreviousVersions() {
   const neverMatched = v.lastMatchAt === null;
 
   if (sinceMs > h36) {
-    console.log(`[gtfs-static] Cleaning up previous version ${v._id} (age=${Math.round(sinceMs / 3600000)}h > 36h)`);
+    console.log(`[gtfs-static] Cleaning up previous ${mode} version ${v._id} (age=${Math.round(sinceMs / 3600000)}h > 36h)`);
     await deleteVersionData(v._id);
     await GtfsVersion.deleteOne({ _id: v._id });
   } else if (sinceMs > h1 && neverMatched) {
-    console.log(`[gtfs-static] Cleaning up previous version ${v._id} (age=${Math.round(sinceMs / 3600000)}h, never matched)`);
+    console.log(`[gtfs-static] Cleaning up previous ${mode} version ${v._id} (age=${Math.round(sinceMs / 3600000)}h, never matched)`);
     await deleteVersionData(v._id);
     await GtfsVersion.deleteOne({ _id: v._id });
   }
 }
 
 /**
- * Main entry point: download WMATA rail GTFS static, load into MongoDB.
+ * Main entry point: download WMATA GTFS static, load into MongoDB.
  * Performs a versioned swap so readers always see consistent data.
  * Safe to call on startup and daily — skips if feed hash is unchanged.
  *
  * @param {object} [opts]
+ * @param {string} [opts.mode]        'rail' (default) or 'bus'
  * @param {string} [opts.apiKey]      WMATA API key (defaults to process.env.WMATA_API_KEY)
  * @param {Buffer} [opts.zipBuffer]   pre-loaded zip bytes (for testing)
  * @param {boolean} [opts.force]      bypass hash-based skip; always reload
- * @param {number}  [opts.minStations] minimum station codes for validation (default 95)
+ * @param {number}  [opts.minStations] minimum station codes for validation (rail default 95)
  * @returns {Promise<{skipped?: boolean, newVersionId?: string}>}
  */
 async function loadGtfsStatic(opts = {}) {
+  const mode   = opts.mode || 'rail';
   const apiKey = opts.apiKey || process.env.WMATA_API_KEY;
+  const feedUrl = FEED_URLS[mode];
 
   // --- Step 1: Get zip bytes ---
   let buf;
   if (opts.zipBuffer) {
     buf = opts.zipBuffer;
   } else {
-    console.log('[gtfs-static] Downloading rail-gtfs-static.zip…');
-    const resp = await axios.get(WMATA_GTFS_URL, {
+    console.log(`[gtfs-static] Downloading ${mode}-gtfs-static.zip…`);
+    const resp = await axios.get(feedUrl, {
       headers: { api_key: apiKey },
       responseType: 'arraybuffer',
       timeout: 60000,
@@ -164,20 +194,20 @@ async function loadGtfsStatic(opts = {}) {
   // --- Step 2: Hash check (skip if unchanged, unless force=true) ---
   const feedHash = crypto.createHash('sha256').update(buf).digest('hex');
   if (!opts.force) {
-    const existing = await GtfsVersion.findOne({ feedHash, status: 'active' });
+    const existing = await GtfsVersion.findOne({ feedHash, status: 'active', mode });
     if (existing) {
-      console.log('[gtfs-static] Feed unchanged — skipping reload');
+      console.log(`[gtfs-static] ${mode} feed unchanged — skipping reload`);
       return { skipped: true };
     }
   }
 
   // Clean up expired previous versions before starting a new load
-  await cleanupPreviousVersions();
+  await cleanupPreviousVersions(mode);
 
   // Clean up any orphaned 'loading' versions from previous crashed runs
-  const orphans = await GtfsVersion.find({ status: 'loading' });
+  const orphans = await GtfsVersion.find({ status: 'loading', mode });
   for (const orphan of orphans) {
-    console.log(`[gtfs-static] Cleaning up orphaned loading version ${orphan._id}`);
+    console.log(`[gtfs-static] Cleaning up orphaned loading ${mode} version ${orphan._id}`);
     await deleteVersionData(orphan._id);
     await GtfsVersion.deleteOne({ _id: orphan._id });
   }
@@ -200,59 +230,69 @@ async function loadGtfsStatic(opts = {}) {
   }
 
   const versionDoc = await GtfsVersion.create({
-    feedHash, feedDate, agencyTz, status: 'loading', loadedAt: new Date(),
+    feedHash, feedDate, agencyTz, mode, status: 'loading', loadedAt: new Date(),
   });
   const versionId = versionDoc._id;
-  console.log(`[gtfs-static] New version ${versionId} (feedDate=${feedDate})`);
+  console.log(`[gtfs-static] New ${mode} version ${versionId} (feedDate=${feedDate})`);
 
   try {
     // --- Step 4: Parse and insert each file ---
-    await loadRoutes(dir, versionId);
-    await loadStops(dir, versionId);
+    await loadRoutes(dir, versionId, mode);
+    await loadStops(dir, versionId, mode);
     await loadCalendarDates(dir, versionId);
     await loadTrips(dir, versionId);
-    await loadStopTimes(dir, versionId);
+    if (mode === 'bus') {
+      await loadBusStopTimes(dir, versionId);
+    } else {
+      await loadStopTimes(dir, versionId);
+    }
 
     // --- Step 5: Validate and compute meta (before activation) ---
-    await validateBeforeActivation(versionId, { minStations: opts.minStations });
-    await computeAndStoreMeta(versionId, feedVersionStr);
+    await validateBeforeActivation(versionId, {
+      mode,
+      minStations:     opts.minStations,
+      minRoutes:       opts.minRoutes,
+      minStopTimeCount: opts.minStopTimeCount,
+    });
+    await computeAndStoreMeta(versionId, feedVersionStr, mode);
 
     // --- Step 6: Activate new version ---
     await GtfsVersion.updateOne({ _id: versionId }, { $set: { status: 'active' } });
-    console.log(`[gtfs-static] Version ${versionId} is now active`);
+    console.log(`[gtfs-static] ${mode} version ${versionId} is now active`);
 
     // --- Step 6b: Demote old active version to 'previous' (keep data for in-flight RT trips) ---
-    const oldActive = await GtfsVersion.findOne({ status: 'active', _id: { $ne: versionId } });
+    const oldActive = await GtfsVersion.findOne({ status: 'active', mode, _id: { $ne: versionId } });
     if (oldActive) {
       await GtfsVersion.updateOne({ _id: oldActive._id }, {
         $set: { status: 'previous', previousSince: new Date(), lastMatchAt: null },
       });
-      console.log(`[gtfs-static] Version ${oldActive._id} demoted to previous`);
+      console.log(`[gtfs-static] ${mode} version ${oldActive._id} demoted to previous`);
     }
 
     return { newVersionId: versionId.toString() };
   } catch (err) {
     // Leave as 'loading' so next startup cleans it up
-    console.error('[gtfs-static] Load failed:', err.message);
+    console.error(`[gtfs-static] ${mode} load failed:`, err.message);
     throw err;
   }
 }
 
-async function loadRoutes(dir, versionId) {
+async function loadRoutes(dir, versionId, mode = 'rail') {
   const file = dir.files.find(f => f.path === 'routes.txt');
   if (!file) return;
   const rows = await parseFile(file);
   const docs = rows.map(r => ({
     version: versionId,
     routeId: r.route_id,
-    lineCode: ROUTE_TO_LINE[r.route_id] || r.route_id,
+    // For bus: lineCode = route_id (= route_short_name, e.g. "A11"); for rail: mapped via ROUTE_TO_LINE
+    lineCode: mode === 'bus' ? r.route_id : (ROUTE_TO_LINE[r.route_id] || r.route_id),
     longName: r.route_long_name || '',
   }));
   await batchInsert(GtfsRoute, docs);
-  console.log(`[gtfs-static] Inserted ${docs.length} routes`);
+  console.log(`[gtfs-static] Inserted ${docs.length} ${mode} routes`);
 }
 
-async function loadStops(dir, versionId) {
+async function loadStops(dir, versionId, mode = 'rail') {
   const file = dir.files.find(f => f.path === 'stops.txt');
   if (!file) return;
   const rows = await parseFile(file);
@@ -264,10 +304,11 @@ async function loadStops(dir, versionId) {
     lon: parseFloat(r.stop_lon) || 0,
     locationType: parseInt(r.location_type, 10) || 0,
     parentStation: r.parent_station || '',
-    wmataCode: deriveWmataCode(r.stop_id),
+    // For bus: wmataCode from stop_code field; for rail: derived from stop_id pattern
+    wmataCode: mode === 'bus' ? (r.stop_code || '') : deriveWmataCode(r.stop_id),
   }));
   await batchInsert(GtfsStop, docs);
-  console.log(`[gtfs-static] Inserted ${docs.length} stops`);
+  console.log(`[gtfs-static] Inserted ${docs.length} ${mode} stops`);
 }
 
 async function loadCalendarDates(dir, versionId) {
@@ -304,8 +345,24 @@ async function loadTrips(dir, versionId) {
 async function loadStopTimes(dir, versionId) {
   const file = dir.files.find(f => f.path === 'stop_times.txt');
   if (!file) return;
+  await streamInsertStopTimes(file, versionId, 'stop_times.txt');
+}
 
-  // Stream-parse to avoid holding all 244K rows in memory at once
+/** Load bus stop times from timepoint_times.txt (pre-filtered to timepoints, ~8× smaller). */
+async function loadBusStopTimes(dir, versionId) {
+  const file = dir.files.find(f => f.path === 'timepoint_times.txt');
+  if (!file) {
+    console.warn('[gtfs-static] timepoint_times.txt not found — falling back to stop_times.txt');
+    return loadStopTimes(dir, versionId);
+  }
+  await streamInsertStopTimes(file, versionId, 'timepoint_times.txt');
+}
+
+/**
+ * Stream-parse a stop_times-like CSV and batch-insert into GtfsStopTime.
+ * Both stop_times.txt and timepoint_times.txt share the same column names.
+ */
+async function streamInsertStopTimes(file, versionId, label) {
   await new Promise((resolve, reject) => {
     const batch = [];
 
@@ -347,7 +404,7 @@ async function loadStopTimes(dir, versionId) {
           }
         })
         .then(() => {
-          console.log(`[gtfs-static] Inserted ${count} stop_times`);
+          console.log(`[gtfs-static] Inserted ${count} stop_times (from ${label})`);
           resolve();
         })
         .catch(reject);
@@ -359,17 +416,25 @@ async function loadStopTimes(dir, versionId) {
 }
 
 /** Compute feed summary stats and persist them to the GtfsVersion meta subdoc. */
-async function computeAndStoreMeta(versionId, feedVersionStr) {
-  const [routeCount, stopTimeCount, serviceIds, stationCodes, dateAgg] = await Promise.all([
+async function computeAndStoreMeta(versionId, feedVersionStr, mode = 'rail') {
+  const queries = [
     GtfsRoute.countDocuments({ version: versionId }),
     GtfsStopTime.countDocuments({ version: versionId }),
     GtfsCalendarDate.distinct('serviceId', { version: versionId, exceptionType: 1 }),
-    GtfsStop.distinct('wmataCode', { version: versionId, locationType: 1, wmataCode: { $ne: '' } }),
     GtfsCalendarDate.aggregate([
       { $match: { version: versionId, exceptionType: 1 } },
       { $group: { _id: null, start: { $min: '$date' }, end: { $max: '$date' } } },
     ]),
-  ]);
+  ];
+
+  // Rail-only: count distinct mapped station codes
+  if (mode === 'rail') {
+    queries.push(GtfsStop.distinct('wmataCode', { version: versionId, locationType: 1, wmataCode: { $ne: '' } }));
+  }
+
+  const results = await Promise.all(queries);
+  const [routeCount, stopTimeCount, serviceIds, dateAgg] = results;
+  const stationCodes = mode === 'rail' ? results[4] : [];
 
   const dateRange = dateAgg[0] || { start: '', end: '' };
 

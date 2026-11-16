@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WmataService } from '../../services/wmata.service';
 import { MapCommandService } from '../../services/map-command.service';
+import { BusAdherencePanelComponent } from '../bus-adherence-panel/bus-adherence-panel.component';
 import Chart from 'chart.js/auto';
 
 // Use require() for both leaflet and markercluster so they resolve to the same CJS
@@ -106,7 +107,7 @@ interface HistData {
 @Component({
   selector: 'app-bus-map',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BusAdherencePanelComponent],
   templateUrl: './bus-map.component.html',
   styleUrl: './bus-map.component.scss',
 })

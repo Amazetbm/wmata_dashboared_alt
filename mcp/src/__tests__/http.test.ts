@@ -236,12 +236,13 @@ describe('MCP protocol round-trip', () => {
     expect(res.status).toBe(200);
     const body = res.json() as { result?: { tools: { name: string }[] } };
     const tools = body.result?.tools ?? [];
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(8);
 
     const names = tools.map((t: { name: string }) => t.name).sort();
     expect(names).toEqual([
       'accessibility_status',
       'bus_positions',
+      'bus_schedule_adherence',
       'line_status',
       'live_trains',
       'next_arrivals',

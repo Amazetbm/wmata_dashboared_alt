@@ -97,4 +97,73 @@ function decodeTripUpdates(buffer) {
   return { feedTimestamp, feedTimestampSec, trips };
 }
 
-module.exports = { decodeTripUpdates };
+/**
+ * Decode a GTFS-RT TripUpdates protobuf buffer for Metrobus.
+ *
+ * Returns a slim per-trip object with refCandidates: up to 5 future stop-time
+ * updates (arrival.time ≥ feedTimestampSec, sorted by ascending stop_sequence).
+ * The poller iterates refCandidates in order and picks the first one that
+ * matches a GtfsStopTime row in the static schedule.
+ *
+ * Key differences from decodeTripUpdates (rail):
+ *   - No ROUTE_TO_LINE lookup; lineCode is always null
+ *   - routeId is passed through as-is (already the bus route ID, e.g. "A11")
+ *   - refCandidates replaces refStopSequence/refActualTimeSec
+ *
+ * @param {Buffer|ArrayBuffer} buffer
+ * @returns {{ feedTimestamp: Date, feedTimestampSec: number, trips: Array }}
+ */
+function decodeBusTripUpdates(buffer) {
+  const feed = FeedMessage.decode(new Uint8Array(buffer));
+
+  const rawTs = feed.header?.timestamp;
+  const feedTimestampSec = (rawTs != null && Number(rawTs) !== 0)
+    ? Number(rawTs)
+    : Math.floor(Date.now() / 1000);
+  const feedTimestamp = new Date(feedTimestampSec * 1000);
+
+  const trips = (feed.entity ?? [])
+    .filter(e => e.tripUpdate)
+    .map(e => {
+      const tu = e.tripUpdate;
+      const trip = tu.trip ?? {};
+      const routeId = trip.routeId ?? null;
+
+      const sr = trip.scheduleRelationship;
+      const scheduleRelationship = (sr != null) ? Number(sr) : null;
+      const isScheduled = sr === 0 || sr == null;
+
+      // For SCHEDULED trips: collect up to 5 future stop-time-updates
+      // sorted by ascending stop_sequence (they already arrive in order from the feed).
+      let refCandidates = [];
+      if (isScheduled) {
+        const stus = (tu.stopTimeUpdate ?? []);
+        for (const stu of stus) {
+          if (refCandidates.length >= 5) break;
+          const t = getPresentTime(stu.arrival) ?? getPresentTime(stu.departure);
+          if (t != null && t >= feedTimestampSec) {
+            const seq = stu.stopSequence != null ? Number(stu.stopSequence) : null;
+            if (seq != null) {
+              refCandidates.push({ stopSequence: seq, actualTimeSec: t });
+            }
+          }
+        }
+        // Sort by ascending stop_sequence in case the feed is not ordered
+        refCandidates.sort((a, b) => a.stopSequence - b.stopSequence);
+      }
+
+      return {
+        tripId:               trip.tripId    ?? null,
+        routeId,
+        lineCode:             null, // bus has no WMATA line code
+        vehicleId:            tu.vehicle?.id ?? null,
+        startDate:            trip.startDate ?? null,
+        scheduleRelationship,
+        refCandidates,
+      };
+    });
+
+  return { feedTimestamp, feedTimestampSec, trips };
+}
+
+module.exports = { decodeTripUpdates, decodeBusTripUpdates };

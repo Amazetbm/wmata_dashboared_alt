@@ -1,0 +1,26 @@
+{
+  "snapshotAt": "2026-11-16T14:30:00.000Z",
+  "coverageRate": 0.82,
+  "degraded": false,
+  "summary": {
+    "total": 200,
+    "early": 5,
+    "onTime": 140,
+    "minor": 40,
+    "significant": 15,
+    "noPrediction": 30,
+    "canceled": 2,
+    "unscheduled": 0,
+    "added": 1
+  },
+  "routeSummaries": [
+    { "routeId": "A11", "total": 20, "early": 1, "onTime": 14, "minor": 4, "significant": 1, "noPrediction": 2 },
+    { "routeId": "B30", "total": 15, "early": 0, "onTime": 10, "minor": 3, "significant": 2, "noPrediction": 1 }
+  ],
+  "buses": [
+    { "vehicleId": "BUS001", "routeId": "A11", "tripId": "trip_A11_1", "delaySeconds": 900, "delayLabel": "significant" },
+    { "vehicleId": "BUS002", "routeId": "B30", "tripId": "trip_B30_1", "delaySeconds": 300, "delayLabel": "minor" },
+    { "vehicleId": "BUS003", "routeId": "A11", "tripId": "trip_A11_2", "delaySeconds": -150, "delayLabel": "early" },
+    { "vehicleId": "BUS004", "routeId": "B30", "tripId": null,          "delaySeconds": null, "delayLabel": null }
+  ]
+}

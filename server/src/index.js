@@ -16,6 +16,8 @@ const busRoutes       = require('./routes/bus');
 const assistantRoutes = require('./routes/assistant');
 const scheduleRoutes  = require('./routes/schedule');
 const statusRoutes    = require('./routes/status');
+const busScheduleAdherenceRoutes = require('./routes/busScheduleAdherence');
+const busAdherenceRoutes         = require('./routes/busAdherence');
 const scheduleLoader  = require('./jobs/scheduleLoader');
 
 const app = express();
@@ -34,6 +36,8 @@ app.use('/api/adherence/schedule', scheduleAdherenceRoutes);
 app.use('/api/outages',  outageRoutes);
 app.use('/api/map',     mapRoutes);
 app.use('/api/bus',       busRoutes);
+app.use('/api/bus/adherence/schedule', busScheduleAdherenceRoutes);
+app.use('/api/bus/adherence', busAdherenceRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/status',  statusRoutes);
@@ -43,7 +47,8 @@ mongoose.connect(process.env.MONGODB_URI)
     console.log('MongoDB connected');
     await ensureTtlIndexes();
     startPolling();
-    await scheduleLoader.init();
+    await scheduleLoader.init('rail');
+    scheduleLoader.init('bus').catch(err => console.error('[server] Bus schedule loader failed:', err.message));
     const port = process.env.PORT || 3000;
     app.listen(port, () => console.log(`Server running on port ${port}`));
   })
