@@ -100,10 +100,14 @@ function decodeTripUpdates(buffer) {
 /**
  * Decode a GTFS-RT TripUpdates protobuf buffer for Metrobus.
  *
- * Returns a slim per-trip object with refCandidates: up to 5 future stop-time
+ * Returns a slim per-trip object with refCandidates: ALL future stop-time
  * updates (arrival.time ≥ feedTimestampSec, sorted by ascending stop_sequence).
  * The poller iterates refCandidates in order and picks the first one that
  * matches a GtfsStopTime row in the static schedule.
+ *
+ * Also returns:
+ *   - tripDelay: trip-level delay in seconds (null if not present in feed)
+ *   - startTime: trip start time string "HH:MM:SS" (null if absent)
  *
  * Key differences from decodeTripUpdates (rail):
  *   - No ROUTE_TO_LINE lookup; lineCode is always null
@@ -133,13 +137,16 @@ function decodeBusTripUpdates(buffer) {
       const scheduleRelationship = (sr != null) ? Number(sr) : null;
       const isScheduled = sr === 0 || sr == null;
 
-      // For SCHEDULED trips: collect up to 5 future stop-time-updates
+      // Trip-level delay (presence-checked; protobuf default 0 is a valid delay value)
+      const tripDelay = Object.prototype.hasOwnProperty.call(tu, 'delay')
+        ? Number(tu.delay) : null;
+
+      // For SCHEDULED trips: collect ALL future stop-time-updates (no cap)
       // sorted by ascending stop_sequence (they already arrive in order from the feed).
       let refCandidates = [];
       if (isScheduled) {
         const stus = (tu.stopTimeUpdate ?? []);
         for (const stu of stus) {
-          if (refCandidates.length >= 5) break;
           const t = getPresentTime(stu.arrival) ?? getPresentTime(stu.departure);
           if (t != null && t >= feedTimestampSec) {
             const seq = stu.stopSequence != null ? Number(stu.stopSequence) : null;
@@ -158,7 +165,9 @@ function decodeBusTripUpdates(buffer) {
         lineCode:             null, // bus has no WMATA line code
         vehicleId:            tu.vehicle?.id ?? null,
         startDate:            trip.startDate ?? null,
+        startTime:            trip.startTime || null, // "HH:MM:SS" for current-trip selection; empty string → null
         scheduleRelationship,
+        tripDelay,
         refCandidates,
       };
     });

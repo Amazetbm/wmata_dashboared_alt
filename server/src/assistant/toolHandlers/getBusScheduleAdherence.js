@@ -6,10 +6,13 @@ async function getBusScheduleAdherence({ mode = 'live', route, from, to } = {}) 
   if (mode === 'live') {
     const snapshot = await BusScheduleAdherenceSnapshot.findOne().sort({ snapshotAt: -1 }).lean();
     if (!snapshot) return null;
-    const { snapshotAt, summary, routeSummaries, buses, coverageRate, degraded } = snapshot;
+    const { snapshotAt, summary, routeSummaries, buses, coverageRate, scheduleMatchRate, degraded } = snapshot;
     return {
       snapshotAt,
       summary,
+      inactive:         summary?.inactive     ?? null,
+      methodCounts:     summary?.methodCounts  ?? null,
+      scheduleMatchRate: scheduleMatchRate     ?? null,
       routeSummaries: route
         ? (routeSummaries || []).filter(r => r.routeId === route.toUpperCase())
         : routeSummaries,

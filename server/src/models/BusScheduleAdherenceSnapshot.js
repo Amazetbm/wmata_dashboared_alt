@@ -24,12 +24,14 @@ const routeSummarySchema = new mongoose.Schema({
 }, { _id: false });
 
 const busScheduleAdherenceSnapshotSchema = new mongoose.Schema({
-  snapshotAt:    { type: Date, required: true },
-  feedTimestamp: { type: Date, required: true },
-  coverageRate:    { type: Number, default: null },
-  degraded:        { type: Boolean, default: false },
-  matchedActive:   { type: Number, default: 0 },
-  matchedPrevious: { type: Number, default: 0 },
+  snapshotAt:        { type: Date, required: true },
+  feedTimestamp:     { type: Date, required: true },
+  coverageRate:      { type: Number, default: null },
+  scheduleMatchRate: { type: Number, default: null },
+  degraded:          { type: Boolean, default: false },
+  matchedActive:     { type: Number, default: 0 },
+  matchedPrevious:   { type: Number, default: 0 },
+  busDetailAt:       { type: Date,   default: null },
   summary: {
     total:        { type: Number, default: 0 },
     early:        { type: Number, default: 0 },
@@ -40,6 +42,11 @@ const busScheduleAdherenceSnapshotSchema = new mongoose.Schema({
     canceled:     { type: Number, default: 0 },
     unscheduled:  { type: Number, default: 0 },
     added:        { type: Number, default: 0 },
+    inactive:     { type: Number, default: 0 },
+    methodCounts: {
+      timepoint: { type: Number, default: 0 },
+      tripDelay: { type: Number, default: 0 },
+    },
   },
   routeSummaries: [routeSummarySchema],
   buses:          [busRecordSchema],

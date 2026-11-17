@@ -3,12 +3,27 @@
 const router = require('express').Router();
 const BusScheduleAdherenceSnapshot = require('../models/BusScheduleAdherenceSnapshot');
 
-// Most recent snapshot — full detail including buses array
+// Most recent snapshot — full detail including buses array.
+// buses is only populated every 5 fetch cycles (~5 min), so if the latest snapshot
+// has an empty buses array, fall back to the most recent snapshot that has buses.
 router.get('/live', async (req, res) => {
   try {
     const snapshot = await BusScheduleAdherenceSnapshot.findOne().sort({ snapshotAt: -1 }).lean();
     if (!snapshot) return res.json({ buses: [], summary: {}, routeSummaries: [], coverageRate: null, degraded: false });
-    res.json(snapshot);
+
+    let buses = snapshot.buses ?? [];
+    let busDetailAt = snapshot.busDetailAt ?? null;
+    if (!buses.length) {
+      const withDetail = await BusScheduleAdherenceSnapshot
+        .findOne({ 'buses.0': { $exists: true } })
+        .sort({ snapshotAt: -1 })
+        .select('buses busDetailAt')
+        .lean();
+      buses      = withDetail?.buses    ?? [];
+      busDetailAt = withDetail?.busDetailAt ?? null;
+    }
+
+    res.json({ ...snapshot, buses, busDetailAt });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
