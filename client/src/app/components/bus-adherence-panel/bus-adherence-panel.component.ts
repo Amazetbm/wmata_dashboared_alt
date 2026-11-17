@@ -15,6 +15,8 @@ type Preset = '3h' | '24h' | '7d' | 'custom';
 interface BusSummary {
   total: number; early: number; onTime: number; minor: number; significant: number;
   noPrediction: number; canceled: number; unscheduled: number; added: number;
+  inactive?: number;
+  methodCounts?: { timepoint: number; tripDelay: number };
 }
 
 interface RouteSummary {
@@ -52,6 +54,7 @@ export class BusAdherencePanelComponent {
   coverageRate = signal<number | null>(null);
   degraded = signal(false);
   noPredictionCount = signal(0);
+  inactiveCount = signal(0);
 
   // Historical state
   histPreset: Preset = '3h';
@@ -83,6 +86,7 @@ export class BusAdherencePanelComponent {
         const sum: BusSummary = data.summary ?? { total: 0, early: 0, onTime: 0, minor: 0, significant: 0, noPrediction: 0, canceled: 0, unscheduled: 0, added: 0 };
         this.summary.set(sum);
         this.noPredictionCount.set(sum.noPrediction ?? 0);
+        this.inactiveCount.set(sum.inactive ?? 0);
         this.routeSummaries.set(data.routeSummaries ?? []);
         const rawBuses: BusRecord[] = (data.buses ?? []).slice().sort((a: BusRecord, b: BusRecord) =>
           (b.delaySeconds ?? 0) - (a.delaySeconds ?? 0)

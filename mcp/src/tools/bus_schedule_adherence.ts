@@ -13,6 +13,7 @@ const DESCRIPTION =
 interface LiveBusAdherenceResponse {
   snapshotAt: string;
   coverageRate: number;
+  scheduleMatchRate?: number;
   degraded: boolean;
   summary: {
     total: number;
@@ -24,6 +25,8 @@ interface LiveBusAdherenceResponse {
     canceled?: number;
     unscheduled?: number;
     added?: number;
+    inactive?: number;
+    methodCounts?: { timepoint: number; tripDelay: number };
   };
   routeSummaries: Array<{
     routeId: string;
@@ -84,6 +87,7 @@ export async function busScheduleAdherenceHandler(
     const result = {
       asOf: data.snapshotAt,
       coverageRate: data.coverageRate,
+      scheduleMatchRate: data.scheduleMatchRate ?? null,
       degraded: data.degraded,
       summary: {
         total: s.total,
@@ -92,7 +96,9 @@ export async function busScheduleAdherenceHandler(
         minor: s.minor,
         significant: s.significant,
         noPrediction: s.noPrediction,
+        inactive: s.inactive ?? null,
         onTimePct,
+        methodCounts: s.methodCounts ?? null,
       },
       byRoute,
       mostDelayed,

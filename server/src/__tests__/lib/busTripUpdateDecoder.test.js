@@ -11,19 +11,19 @@ function buildFeed({ timestamp, entities = [] }) {
 }
 
 function busTripEntity(overrides = {}) {
-  return {
-    id: overrides.id ?? 'e1',
-    tripUpdate: {
-      trip: {
-        tripId:               overrides.tripId   ?? 'BUS_T100',
-        routeId:              overrides.routeId  ?? 'A11',
-        startDate:            overrides.startDate ?? '20261116',
-        scheduleRelationship: overrides.sr ?? 0,
-      },
-      vehicle:        { id: overrides.vehicleId ?? 'BUS_V001' },
-      stopTimeUpdate: overrides.stus ?? [],
+  const tripUpdate = {
+    trip: {
+      tripId:               overrides.tripId   ?? 'BUS_T100',
+      routeId:              overrides.routeId  ?? 'A11',
+      startDate:            overrides.startDate ?? '20261116',
+      scheduleRelationship: overrides.sr ?? 0,
     },
+    vehicle:        { id: overrides.vehicleId ?? 'BUS_V001' },
+    stopTimeUpdate: overrides.stus ?? [],
   };
+  if (overrides.startTime !== undefined) tripUpdate.trip.startTime = overrides.startTime;
+  if (overrides.delay !== undefined)     tripUpdate.delay = overrides.delay;
+  return { id: overrides.id ?? 'e1', tripUpdate };
 }
 
 const feedTs = 1700000000;
@@ -48,7 +48,7 @@ test('lineCode is always null for bus trips (no ROUTE_TO_LINE mapping)', () => {
 
 // ── refCandidates for SCHEDULED trips ────────────────────────────────────────
 
-test('collects up to 5 future STUs into refCandidates', () => {
+test('collects ALL future STUs into refCandidates (no cap)', () => {
   const buf = buildFeed({
     timestamp: feedTs,
     entities: [busTripEntity({
@@ -58,15 +58,15 @@ test('collects up to 5 future STUs into refCandidates', () => {
         { stopSequence: 3, arrival: { time: feedTs + 120 } },  // future 2
         { stopSequence: 4, arrival: { time: feedTs + 180 } },  // future 3
         { stopSequence: 5, arrival: { time: feedTs + 240 } },  // future 4
-        { stopSequence: 6, arrival: { time: feedTs + 300 } },  // future 5 — capped
-        { stopSequence: 7, arrival: { time: feedTs + 360 } },  // future 6 — excluded (cap=5)
+        { stopSequence: 6, arrival: { time: feedTs + 300 } },  // future 5
+        { stopSequence: 7, arrival: { time: feedTs + 360 } },  // future 6 — now included (no cap)
       ],
     })],
   });
   const { trips } = decodeBusTripUpdates(buf);
-  expect(trips[0].refCandidates).toHaveLength(5);
+  expect(trips[0].refCandidates).toHaveLength(6);
   expect(trips[0].refCandidates[0]).toEqual({ stopSequence: 2, actualTimeSec: feedTs + 60 });
-  expect(trips[0].refCandidates[4]).toEqual({ stopSequence: 6, actualTimeSec: feedTs + 300 });
+  expect(trips[0].refCandidates[5]).toEqual({ stopSequence: 7, actualTimeSec: feedTs + 360 });
 });
 
 test('all past STUs → refCandidates = [] (noPrediction)', () => {
@@ -161,4 +161,50 @@ test('returned trip has refCandidates but no refStopSequence field', () => {
   expect(trips[0]).toHaveProperty('refCandidates');
   expect(trips[0]).not.toHaveProperty('refStopSequence');
   expect(trips[0]).not.toHaveProperty('refActualTimeSec');
+});
+
+// ── tripDelay (trip-level delay field) ────────────────────────────────────────
+
+test('tripDelay decoded when tu.delay is present (positive)', () => {
+  const buf = buildFeed({ timestamp: feedTs, entities: [busTripEntity({ delay: 180 })] });
+  const { trips } = decodeBusTripUpdates(buf);
+  expect(trips[0].tripDelay).toBe(180);
+});
+
+test('tripDelay decoded when tu.delay=0 (zero is a valid delay, not a protobuf default)', () => {
+  const buf = buildFeed({ timestamp: feedTs, entities: [busTripEntity({ delay: 0 })] });
+  const { trips } = decodeBusTripUpdates(buf);
+  expect(trips[0].tripDelay).toBe(0);
+});
+
+test('tripDelay is null when tu.delay is not present', () => {
+  const buf = buildFeed({ timestamp: feedTs, entities: [busTripEntity()] });
+  const { trips } = decodeBusTripUpdates(buf);
+  expect(trips[0].tripDelay).toBeNull();
+});
+
+// ── startTime ─────────────────────────────────────────────────────────────────
+
+test('startTime decoded from trip.startTime', () => {
+  const buf = buildFeed({ timestamp: feedTs, entities: [busTripEntity({ startTime: '08:30:00' })] });
+  const { trips } = decodeBusTripUpdates(buf);
+  expect(trips[0].startTime).toBe('08:30:00');
+});
+
+test('startTime is null when trip.startTime is absent', () => {
+  const buf = buildFeed({ timestamp: feedTs, entities: [busTripEntity()] });
+  const { trips } = decodeBusTripUpdates(buf);
+  expect(trips[0].startTime).toBeNull();
+});
+
+// ── No cap: 10 future STUs → 10 candidates ───────────────────────────────────
+
+test('10 future STUs produce 10 refCandidates (no cap)', () => {
+  const stus = Array.from({ length: 10 }, (_, i) => ({
+    stopSequence: i + 1,
+    arrival: { time: feedTs + (i + 1) * 60 },
+  }));
+  const buf = buildFeed({ timestamp: feedTs, entities: [busTripEntity({ stus })] });
+  const { trips } = decodeBusTripUpdates(buf);
+  expect(trips[0].refCandidates).toHaveLength(10);
 });

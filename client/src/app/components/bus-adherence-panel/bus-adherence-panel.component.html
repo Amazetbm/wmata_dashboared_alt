@@ -34,6 +34,13 @@
     </div>
   }
 
+  <!-- Inactive badge -->
+  @if (inactiveCount() > 0 && view === 'live') {
+    <div class="alert alert-info">
+      ℹ {{ inactiveCount() }} scheduled trip{{ inactiveCount() === 1 ? '' : 's' }} have no future stop-time updates (not yet departed or complete).
+    </div>
+  }
+
   <!-- Loading / error -->
   @if (loading() && view === 'live') {
     <div class="loading">Loading bus adherence data…</div>
