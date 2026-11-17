@@ -359,4 +359,10 @@ describe('bus object in GET /api/schedule/status', () => {
     expect(res.body.bus.enabled).toBe(false);
     process.env.GTFS_BUS_SCHEDULE = 'true';
   });
+
+  it('bus.previousVersion is null when no previous bus version exists', async () => {
+    const res = await request(app).get('/api/schedule/status');
+    expect(res.status).toBe(200);
+    expect(res.body.bus).toHaveProperty('previousVersion', null);
+  });
 });

@@ -36,11 +36,15 @@ router.get('/status', async (req, res) => {
   if (!isEnabled()) return res.status(503).json(DISABLED_RESP);
 
   try {
-    const [version, prevVersion, busVersion] = await Promise.all([
+    const [version, prevVersion, busVersion, busPrevVersion] = await Promise.all([
       GtfsVersion.findOne({ status: 'active', mode: 'rail' }).sort({ loadedAt: -1 }).lean(),
       GtfsVersion.findOne({ status: 'previous', mode: 'rail' }, { feedDate: 1, loadedAt: 1, previousSince: 1 }).lean(),
       isBusEnabled()
         ? GtfsVersion.findOne({ status: 'active', mode: 'bus' }).sort({ loadedAt: -1 }).lean()
+        : Promise.resolve(null),
+      isBusEnabled()
+        ? GtfsVersion.findOne({ status: 'previous', mode: 'bus' },
+            { feedDate: 1, loadedAt: 1, previousSince: 1 }).lean()
         : Promise.resolve(null),
     ]);
     if (!version) {
@@ -84,6 +88,10 @@ router.get('/status', async (req, res) => {
           end:   isoDate(busVersion.meta.serviceDateRange?.end),
         } : null,
         coversToday: busServiceResult.ok ? busServiceResult.value.length > 0 : false,
+        previousVersion: busPrevVersion
+          ? { feedDate: busPrevVersion.feedDate, loadedAt: busPrevVersion.loadedAt,
+              previousSince: busPrevVersion.previousSince }
+          : null,
       };
     }
 

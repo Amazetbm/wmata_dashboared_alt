@@ -366,33 +366,55 @@ async function loadStopTimes(dir, versionId) {
 
 /** Load bus stop times from timepoint_times.txt (pre-filtered to timepoints, ~8× smaller). */
 async function loadBusStopTimes(dir, versionId) {
-  const file = dir.files.find(f => f.path === 'timepoint_times.txt');
-  if (!file) {
-    console.warn('[gtfs-static] timepoint_times.txt not found — falling back to stop_times.txt');
-    return loadStopTimes(dir, versionId);
+  const timepointFile = dir.files.find(f => f.path === 'timepoint_times.txt');
+  const stopTimesFile = dir.files.find(f => f.path === 'stop_times.txt');
+
+  if (!timepointFile) {
+    // Fallback: filter stop_times.txt to timepoint=1 rows only
+    if (!stopTimesFile) {
+      console.warn('[gtfs-static] neither timepoint_times.txt nor stop_times.txt found');
+      return;
+    }
+    console.warn('[gtfs-static] timepoint_times.txt not found — filtering stop_times.txt to timepoint=1');
+    return streamInsertStopTimes(stopTimesFile, versionId, 'stop_times.txt (timepoint=1 filter)',
+      row => row.timepoint === '1');
   }
-  await streamInsertStopTimes(file, versionId, 'timepoint_times.txt');
+
+  // Primary path: load timepoint_times.txt
+  const timepointCount = await streamInsertStopTimes(timepointFile, versionId, 'timepoint_times.txt');
+
+  // Background: count stop_times.txt timepoint=1 rows for comparison (no insert)
+  if (stopTimesFile) {
+    countFilteredRows(stopTimesFile, row => row.timepoint === '1')
+      .then(n => {
+        const delta = n - timepointCount;
+        const summary = delta === 0 ? 'match' : `delta ${delta > 0 ? '+' : ''}${delta}`;
+        console.log(`[gtfs-static] timepoint check: timepoint_times.txt ${timepointCount} rows, stop_times.txt timepoint=1 ${n} rows — ${summary}`);
+      })
+      .catch(err => console.warn('[gtfs-static] stop_times.txt count check skipped:', err.message));
+  }
 }
 
 /**
  * Stream-parse a stop_times-like CSV and batch-insert into GtfsStopTime.
  * Both stop_times.txt and timepoint_times.txt share the same column names.
+ *
+ * @param {object} file       unzipper file entry
+ * @param {*}      versionId  Mongoose ObjectId
+ * @param {string} label      display name for logging
+ * @param {Function|null} [filterFn]  optional row-level predicate; rows failing it are skipped
+ * @returns {Promise<number>} number of rows inserted
  */
-async function streamInsertStopTimes(file, versionId, label) {
-  await new Promise((resolve, reject) => {
+async function streamInsertStopTimes(file, versionId, label, filterFn = null) {
+  return new Promise((resolve, reject) => {
     const batch = [];
-
-    const flush = async () => {
-      if (batch.length === 0) return;
-      const toInsert = batch.splice(0);
-      await GtfsStopTime.insertMany(toInsert, { ordered: false });
-    };
 
     let pendingFlush = Promise.resolve();
     let count = 0;
 
     const parser = csvParse({ columns: true, skip_empty_lines: true, trim: true });
     parser.on('data', row => {
+      if (filterFn && !filterFn(row)) return;
       batch.push({
         version: versionId,
         tripId: row.trip_id,
@@ -421,13 +443,32 @@ async function streamInsertStopTimes(file, versionId, label) {
         })
         .then(() => {
           console.log(`[gtfs-static] Inserted ${count} stop_times (from ${label})`);
-          resolve();
+          resolve(count);
         })
         .catch(reject);
     });
 
     parser.on('error', reject);
     file.stream().pipe(parser);
+  });
+}
+
+/**
+ * Count rows in a CSV file entry matching an optional filter predicate.
+ * Does not insert anything — used for cross-checking feed consistency.
+ *
+ * @param {object} fileEntry  unzipper file entry
+ * @param {Function|null} [filterFn]
+ * @returns {Promise<number>}
+ */
+function countFilteredRows(fileEntry, filterFn = null) {
+  return new Promise((resolve, reject) => {
+    let count = 0;
+    const parser = csvParse({ columns: true, skip_empty_lines: true, trim: true });
+    parser.on('data', row => { if (!filterFn || filterFn(row)) count++; });
+    parser.on('end', () => resolve(count));
+    parser.on('error', reject);
+    fileEntry.stream().pipe(parser);
   });
 }
 
