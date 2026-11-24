@@ -18,6 +18,7 @@ const AdmZip = require('adm-zip');
 
 const GtfsVersion = require('../../models/GtfsVersion');
 const GtfsStop = require('../../models/GtfsStop');
+const GtfsRoute = require('../../models/GtfsRoute');
 const { loadGtfsStatic, computeAndStoreMeta } = require('../../lib/gtfsStatic/loader');
 
 // ---- Fixture data (same as schedule.test.js) ----
@@ -364,5 +365,61 @@ describe('bus object in GET /api/schedule/status', () => {
     const res = await request(app).get('/api/schedule/status');
     expect(res.status).toBe(200);
     expect(res.body.bus).toHaveProperty('previousVersion', null);
+  });
+});
+
+// ---- Tests: GET /api/schedule/bus/routes ----
+
+describe('GET /bus/routes', () => {
+  let busVersionId;
+
+  beforeAll(async () => {
+    process.env.GTFS_BUS_SCHEDULE = 'true';
+    const busV = await GtfsVersion.create({
+      feedHash: 'bus-routes-endpoint-test-hash',
+      feedDate: '20261027',
+      mode: 'bus',
+      status: 'active',
+      loadedAt: new Date(),
+    });
+    busVersionId = busV._id;
+    await GtfsRoute.create([
+      { version: busVersionId, routeId: 'A11', lineCode: 'A11', longName: 'Anacostia' },
+      { version: busVersionId, routeId: 'B30', lineCode: 'B30', longName: 'BWI Thurgood Marshall' },
+    ]);
+  });
+
+  afterAll(async () => {
+    await GtfsRoute.deleteMany({ version: busVersionId });
+    await GtfsVersion.deleteOne({ _id: busVersionId });
+    delete process.env.GTFS_BUS_SCHEDULE;
+  });
+
+  it('503 when GTFS_BUS_SCHEDULE=false', async () => {
+    process.env.GTFS_BUS_SCHEDULE = 'false';
+    const res = await request(app).get('/api/schedule/bus/routes');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBeDefined();
+    process.env.GTFS_BUS_SCHEDULE = 'true';
+  });
+
+  it('200 with two routes when flag is on and bus version is active', async () => {
+    const res = await request(app).get('/api/schedule/bus/routes');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toEqual({ routeId: 'A11', shortName: 'A11', longName: 'Anacostia' });
+    expect(res.body[1]).toEqual({ routeId: 'B30', shortName: 'B30', longName: 'BWI Thurgood Marshall' });
+  });
+
+  it('503 when flag is on but no active bus version exists', async () => {
+    await GtfsVersion.updateOne({ _id: busVersionId }, { $set: { status: 'previous' } });
+    try {
+      const res = await request(app).get('/api/schedule/bus/routes');
+      expect(res.status).toBe(503);
+      expect(res.body.error).toMatch(/no active bus/i);
+    } finally {
+      await GtfsVersion.updateOne({ _id: busVersionId }, { $set: { status: 'active' } });
+    }
   });
 });

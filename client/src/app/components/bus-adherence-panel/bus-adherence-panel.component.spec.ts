@@ -49,6 +49,8 @@ describe('BusAdherencePanelComponent', () => {
   });
 
   afterEach(async () => {
+    // Flush any unflushed schedule-routes requests to satisfy verify()
+    httpMock.match(r => r.url.includes('/api/schedule/bus/routes')).forEach(r => r.flush([]));
     httpMock.verify();
     vi.useRealTimers();
   });
@@ -159,5 +161,102 @@ describe('BusAdherencePanelComponent', () => {
 
   it('formatDelay returns — for null', () => {
     expect(component.formatDelay(null)).toBe('—');
+  });
+
+  // ── new: error handling ───────────────────────────────────────────────────
+
+  it('503 response sets error signal with server message and clears loading', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    const req = httpMock.expectOne(r => r.url.includes('/api/bus/adherence/schedule/live'));
+    req.flush(
+      { error: 'Bus schedule adherence not enabled on this server' },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.error()).toBe('Bus schedule adherence not enabled on this server');
+    expect(component.loading()).toBe(false);
+  });
+
+  // ── new: immediate reload on route change ─────────────────────────────────
+
+  it('onRouteChange triggers immediate re-fetch without waiting 30s', async () => {
+    // First tick
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne(r => r.url.includes('/api/bus/adherence/schedule/live')).flush(makeLiveResponse());
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Change route and trigger reload
+    component.selectedRoute = 'A11';
+    component.onRouteChange();
+
+    // A new request should be pending immediately (no 30s advance needed)
+    const req = httpMock.expectOne(r => r.url.includes('/api/bus/adherence/schedule/live'));
+    expect(req.request.params.get('route')).toBe('A11');
+    req.flush(makeLiveResponse());
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  // ── new: history error message ────────────────────────────────────────────
+
+  it('history 503 sets histError with server message', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    httpMock.expectOne(r => r.url.includes('/api/bus/adherence/schedule/live')).flush(makeLiveResponse());
+    await vi.advanceTimersByTimeAsync(0);
+
+    component.histPreset = '3h';
+    component.loadHistorical();
+
+    const histReq = httpMock.expectOne(r => r.url.includes('/api/bus/adherence/schedule/history'));
+    histReq.flush(
+      { error: 'No data yet' },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.histError()).toBe('No data yet');
+  });
+});
+
+// ── new: schedule routes dropdown ─────────────────────────────────────────────
+
+describe('BusAdherencePanelComponent – schedule routes dropdown', () => {
+  let fixture: ComponentFixture<BusAdherencePanelComponent>;
+  let component: BusAdherencePanelComponent;
+  let httpMock: HttpTestingController;
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+
+    await TestBed.configureTestingModule({
+      imports: [BusAdherencePanelComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(BusAdherencePanelComponent);
+    component = fixture.componentInstance;
+    httpMock = TestBed.inject(HttpTestingController);
+    fixture.autoDetectChanges();
+  });
+
+  afterEach(async () => {
+    httpMock.match(() => true).forEach(r => r.flush({}));
+    vi.useRealTimers();
+  });
+
+  it('populates scheduleRoutes from /api/schedule/bus/routes', async () => {
+    // Flush the schedule routes request with real data
+    httpMock.expectOne(r => r.url.includes('/api/schedule/bus/routes')).flush([
+      { routeId: 'A11', shortName: 'A11', longName: 'Anacostia' },
+      { routeId: 'B30', shortName: 'B30', longName: 'BWI Thurgood Marshall' },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    // Also consume the live request
+    httpMock.expectOne(r => r.url.includes('/api/bus/adherence/schedule/live')).flush(makeLiveResponse());
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(component.scheduleRoutes()).toHaveLength(2);
+    expect(component.scheduleRoutes()[0].routeId).toBe('A11');
+    expect(component.scheduleRoutes()[1].routeId).toBe('B30');
   });
 });

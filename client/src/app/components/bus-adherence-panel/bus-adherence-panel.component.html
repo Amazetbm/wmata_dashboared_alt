@@ -7,8 +7,8 @@
         Route:
         <select [(ngModel)]="selectedRoute" (ngModelChange)="onRouteChange()">
           <option value="">All Routes</option>
-          @for (rs of routeSummaries(); track rs.routeId) {
-            <option [value]="rs.routeId">{{ rs.routeId }}</option>
+          @for (rs of scheduleRoutes(); track rs.routeId) {
+            <option [value]="rs.routeId">{{ rs.routeId }}{{ rs.longName ? ' — ' + rs.longName : '' }}</option>
           }
         </select>
       </label>

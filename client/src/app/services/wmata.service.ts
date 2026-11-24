@@ -121,4 +121,8 @@ export class WmataService {
     const params = new HttpParams().set('at', at);
     return this.http.get(`${this.base}/bus/adherence/schedule/snapshot`, { params });
   }
+
+  getBusScheduleRoutes(): Observable<any> {
+    return this.http.get(`${this.base}/schedule/bus/routes`);
+  }
 }

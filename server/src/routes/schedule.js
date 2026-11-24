@@ -7,6 +7,7 @@ const GtfsVersion = require('../models/GtfsVersion');
 const GtfsStop = require('../models/GtfsStop');
 const GtfsTrip = require('../models/GtfsTrip');
 const GtfsStopTime = require('../models/GtfsStopTime');
+const GtfsRoute = require('../models/GtfsRoute');
 const {
   getActiveVersionId,
   getActiveServiceIds,
@@ -218,6 +219,35 @@ router.post('/reload', (req, res) => {
     .then(r => console.log('[schedule/reload] Complete:', r))
     .catch(err => console.error('[schedule/reload] Failed:', err.message));
   return res.json({ message: 'Reload triggered' });
+});
+
+/**
+ * GET /api/schedule/bus/routes
+ * Returns the list of active bus routes for the route filter dropdown.
+ */
+router.get('/bus/routes', async (req, res) => {
+  if (!isBusEnabled()) return res.status(503).json({ error: 'Bus schedule feature disabled' });
+
+  try {
+    const busVersion = await GtfsVersion.findOne({ status: 'active', mode: 'bus' }).lean();
+    if (!busVersion) {
+      return res.status(503).json({ error: 'No active bus GTFS version loaded' });
+    }
+
+    const routes = await GtfsRoute.find(
+      { version: busVersion._id },
+      { routeId: 1, lineCode: 1, longName: 1, _id: 0 },
+    ).sort({ routeId: 1 }).lean();
+
+    return res.json(routes.map(r => ({
+      routeId:   r.routeId,
+      shortName: r.lineCode,
+      longName:  r.longName ?? '',
+    })));
+  } catch (err) {
+    console.error('[schedule/bus/routes]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;

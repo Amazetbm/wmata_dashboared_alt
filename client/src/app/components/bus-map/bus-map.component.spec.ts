@@ -1,9 +1,16 @@
 import { TestBed } from '@angular/core/testing';
+import { Component } from '@angular/core';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { BusMapComponent } from './bus-map.component';
 import { WmataService } from '../../services/wmata.service';
 import { MapCommandService } from '../../services/map-command.service';
+import { BusAdherencePanelComponent } from '../bus-adherence-panel/bus-adherence-panel.component';
+
+// Stand-in for the embedded adherence panel: the panel has its own spec, and its
+// HTTP calls (schedule routes, live polling) must not leak into the bus map tests.
+@Component({ selector: 'app-bus-adherence-panel', standalone: true, template: '' })
+class BusAdherencePanelStub {}
 
 vi.mock('chart.js/auto', () => ({
   default: class MockChart {
@@ -53,7 +60,12 @@ describe('BusMapComponent', () => {
         WmataService,
         MapCommandService,
       ],
-    }).compileComponents();
+    })
+      .overrideComponent(BusMapComponent, {
+        remove: { imports: [BusAdherencePanelComponent] },
+        add: { imports: [BusAdherencePanelStub] },
+      })
+      .compileComponents();
 
     const fixture = TestBed.createComponent(BusMapComponent);
     component = fixture.componentInstance;
